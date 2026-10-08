@@ -1,8 +1,52 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Plus, Edit3, Trash2, Search, Phone, Mail, X, Check, ArrowLeft, Shield, User, Sparkles
+  Plus, Edit3, Trash2, Search, Phone, Mail, X, Check, ArrowLeft, Shield, User, Sparkles,
+  List, LayoutGrid, ChevronDown, ChevronUp
 } from './Icons';
 import UnsavedChangesModal from './UnsavedChangesModal';
+import { loadStoredRoles } from '../data/catalogs';
+
+const BASE_DIRECTORY_ROLES = [
+  'Pastor de Jóvenes / Líder General',
+  'Líder de Jóvenes / Maestro',
+  'Líder Jotapece (JPC)',
+  'Líder Siervos (121)',
+  'Coordinador del Servicio',
+  'Predicador / Mensaje',
+  'Coordinadora de Alabanza',
+  'Alabanza / Voz',
+  'Alabanza / Músico Instrumental',
+  'Líder Técnico Audiovisual',
+  'Sonido y Audio FOH',
+  'Multimedia y Proyección',
+  'Transmisión / Redes',
+  'Recepción y Bienvenida',
+  'Registro y Asistencia',
+  'Dinámicas y Rompehielos',
+  'Refrigerio y Hospitalidad',
+  'Logística y Montaje',
+  'Desmontaje y Cierre',
+  'Servidor de Apoyo General'
+];
+
+const BASE_SERVICE_AREAS = [
+  'Alabanza',
+  'Música / Instrumentos',
+  'Sonido y Audio',
+  'Multimedia y Proyección',
+  'Transmisión / Redes',
+  'Recepción y Bienvenida',
+  'Registro y Asistencia',
+  'Logística y Montaje',
+  'Desmontaje y Limpieza',
+  'Refrigerio y Hospitalidad',
+  'Dinámicas y Rompehielos',
+  'Predicación',
+  'Enseñanza / Maestro',
+  'Discipulado',
+  'Pastoral / Consejería',
+  'Dirección General'
+];
 
 export default function ServersDirectory({ 
   servers, 
@@ -10,10 +54,12 @@ export default function ServersDirectory({
   onAddServer, 
   onUpdateServer, 
   onDeleteServer,
-  onRequireAuth
+  onRequireAuth,
+  isAdminAuthenticated
 }) {
   const [filterGroup, setFilterGroup] = useState('all'); // all | jotapece | siervos | ambos
   const [searchQuery, setSearchQuery] = useState('');
+  const [directoryViewMode, setDirectoryViewMode] = useState('cards'); // 'cards' | 'list'
   const [editingServer, setEditingServer] = useState(null); // null or server object
   const [isCreating, setIsCreating] = useState(false);
   const [showUnsavedPrompt, setShowUnsavedPrompt] = useState(false);
@@ -24,19 +70,46 @@ export default function ServersDirectory({
     nickname: '',
     role: '',
     groups: ['jotapece'],
-    primaryAreas: '',
+    primaryAreas: [],
     phone: '',
     email: '',
     active: true
   });
+  const [isCustomRole, setIsCustomRole] = useState(false);
+  const [customRoleInput, setCustomRoleInput] = useState('');
+  const [customAreaInput, setCustomAreaInput] = useState('');
+  const [isAreasExpanded, setIsAreasExpanded] = useState(false);
+
+  // Dynamically consolidate all available roles for the select list
+  const storedRoles = loadStoredRoles() || [];
+  const storedRoleNames = storedRoles.map(r => r.role).filter(Boolean);
+  const existingServerRoles = (servers || []).map(s => s.role).filter(Boolean);
+  const allAvailableRoles = Array.from(new Set([
+    ...BASE_DIRECTORY_ROLES,
+    ...storedRoleNames,
+    ...existingServerRoles
+  ])).filter(Boolean);
+
+  // Dynamically consolidate all available service areas for multi-select
+  const existingServerAreas = (servers || []).flatMap(s => 
+    Array.isArray(s.primaryAreas) 
+      ? s.primaryAreas 
+      : (typeof s.primaryAreas === 'string' ? s.primaryAreas.split(',').map(a => a.trim()).filter(Boolean) : [])
+  );
+  const selectedAreas = Array.isArray(formData.primaryAreas) ? formData.primaryAreas : [];
+  const allAvailableAreas = Array.from(new Set([
+    ...BASE_SERVICE_AREAS,
+    ...existingServerAreas,
+    ...selectedAreas
+  ])).filter(Boolean);
 
   const initialFormRef = useRef(formData);
 
   const isDirty = (
     formData.name !== initialFormRef.current.name ||
     formData.nickname !== initialFormRef.current.nickname ||
-    formData.role !== initialFormRef.current.role ||
-    formData.primaryAreas !== initialFormRef.current.primaryAreas ||
+    (isCustomRole ? customRoleInput : formData.role) !== initialFormRef.current.role ||
+    JSON.stringify(formData.primaryAreas) !== JSON.stringify(initialFormRef.current.primaryAreas) ||
     formData.phone !== initialFormRef.current.phone ||
     formData.email !== initialFormRef.current.email ||
     JSON.stringify(formData.groups) !== JSON.stringify(initialFormRef.current.groups)
@@ -86,18 +159,24 @@ export default function ServersDirectory({
   }, [isCreating, editingServer, isDirty, showUnsavedPrompt]);
 
   const openCreateModal = () => {
+    const defaultRole = 'Servidor de Apoyo General';
+    const defaultAreas = ['Logística y Montaje', 'Recepción y Bienvenida'];
     const initData = {
       name: '',
       nickname: '',
-      role: 'Líder / Servidor',
+      role: defaultRole,
       groups: ['jotapece'],
-      primaryAreas: 'Logística, Bienvenida',
+      primaryAreas: defaultAreas,
       phone: '',
       email: '',
       active: true
     };
     setFormData(initData);
     initialFormRef.current = initData;
+    setIsCustomRole(false);
+    setCustomRoleInput('');
+    setCustomAreaInput('');
+    setIsAreasExpanded(false);
     setIsCreating(true);
   };
 
@@ -114,18 +193,29 @@ export default function ServersDirectory({
 
   const openEditModal = (server) => {
     setEditingServer(server);
+    const parsedAreas = Array.isArray(server.primaryAreas)
+      ? [...server.primaryAreas]
+      : (typeof server.primaryAreas === 'string' && server.primaryAreas.trim()
+          ? server.primaryAreas.split(',').map(s => s.trim()).filter(Boolean)
+          : []);
+
+    const srvRole = server.role || 'Servidor de Apoyo General';
     const initData = {
       name: server.name || '',
       nickname: server.nickname || '',
-      role: server.role || '',
-      groups: server.groups || ['jotapece'],
-      primaryAreas: Array.isArray(server.primaryAreas) ? server.primaryAreas.join(', ') : (server.primaryAreas || ''),
+      role: srvRole,
+      groups: Array.isArray(server.groups) ? [...server.groups] : ['jotapece'],
+      primaryAreas: parsedAreas,
       phone: server.phone || '',
       email: server.email || '',
       active: server.active !== false
     };
     setFormData(initData);
     initialFormRef.current = initData;
+    setIsCustomRole(false);
+    setCustomRoleInput('');
+    setCustomAreaInput('');
+    setIsAreasExpanded(false);
   };
 
   const handleEditClick = (server) => {
@@ -163,21 +253,22 @@ export default function ServersDirectory({
       return;
     }
 
-    const areasArray = formData.primaryAreas
-      .split(',')
-      .map(s => s.trim())
-      .filter(Boolean);
+    const effectiveRole = (isCustomRole ? customRoleInput.trim() : formData.role.trim()) || 'Servidor de Apoyo General';
+
+    const areasArray = Array.isArray(formData.primaryAreas)
+      ? formData.primaryAreas
+      : (formData.primaryAreas || '').split(',').map(s => s.trim()).filter(Boolean);
 
     if (isCreating) {
       const newServer = {
         id: `srv-${Date.now()}`,
-        name: formData.name,
-        nickname: formData.nickname,
-        role: formData.role,
+        name: formData.name.trim(),
+        nickname: formData.nickname.trim(),
+        role: effectiveRole,
         groups: formData.groups,
         primaryAreas: areasArray,
-        phone: formData.phone,
-        email: formData.email,
+        phone: formData.phone.trim(),
+        email: formData.email.trim(),
         active: formData.active
       };
       onAddServer(newServer);
@@ -186,13 +277,13 @@ export default function ServersDirectory({
     } else if (editingServer) {
       const updated = {
         ...editingServer,
-        name: formData.name,
-        nickname: formData.nickname,
-        role: formData.role,
+        name: formData.name.trim(),
+        nickname: formData.nickname.trim(),
+        role: effectiveRole,
         groups: formData.groups,
         primaryAreas: areasArray,
-        phone: formData.phone,
-        email: formData.email,
+        phone: formData.phone.trim(),
+        email: formData.email.trim(),
         active: formData.active
       };
       onUpdateServer(updated);
@@ -252,10 +343,12 @@ export default function ServersDirectory({
           </p>
         </div>
 
-        <button className="btn btn-primary" onClick={handleCreateClick}>
-          <Plus size={18} />
-          <span>Agregar Servidor</span>
-        </button>
+        {isAdminAuthenticated && (
+          <button className="btn btn-primary" onClick={handleCreateClick}>
+            <Plus size={18} />
+            <span>Agregar Servidor</span>
+          </button>
+        )}
       </div>
 
       {/* Filters and Search Bar */}
@@ -290,7 +383,7 @@ export default function ServersDirectory({
         <div className="search-input-wrapper">
           <Search size={16} className="search-icon" />
           <input 
-            type="text"
+            type="text" 
             placeholder="Buscar por nombre, cargo o ministerio..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -299,112 +392,223 @@ export default function ServersDirectory({
         </div>
       </div>
 
-      {/* Grid of Servers */}
-      <div className="servers-cards-grid">
-        {filteredServers.map(server => {
-          const assignments = getAssignmentsForServer(server.id, server.name);
+      {/* View Switcher and Server Count Bar */}
+      <div className="directory-controls-row">
+        <span className="directory-count-text">
+          Mostrando <strong>{filteredServers.length}</strong> {filteredServers.length === 1 ? 'colaborador' : 'colaboradores'}
+        </span>
 
-          return (
-            <div key={server.id} className="server-profile-card">
-              <div className="card-top-row">
-                <div className="server-avatar-circle">
-                  <span>{server.name.charAt(0)}</span>
-                </div>
-
-                <div className="card-actions-group">
-                  <button 
-                    className="icon-action-btn"
-                    onClick={() => handleEditClick(server)}
-                    title="Editar servidor (Requiere clave administrativa)"
-                  >
-                    <Edit3 size={16} />
-                  </button>
-                  <button 
-                    className="icon-action-btn btn-danger"
-                    onClick={() => handleDeleteClick(server)}
-                    title="Eliminar servidor (Requiere clave administrativa)"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              </div>
-
-              <div className="server-info-main">
-                <h3 className="server-name">
-                  {server.name}
-                  {server.nickname && <span className="server-nickname"> ({server.nickname})</span>}
-                </h3>
-                <span className="server-role-badge">{server.role}</span>
-              </div>
-
-              {/* Group pills */}
-              <div className="server-groups-row">
-                {server.groups?.includes('jotapece') && (
-                  <span className="group-pill-sm pill-jpc">Jotapece</span>
-                )}
-                {server.groups?.includes('siervos') && (
-                  <span className="group-pill-sm pill-siervos">Siervos</span>
-                )}
-              </div>
-
-              {/* Ministry Areas */}
-              <div className="server-areas-box">
-                <span className="areas-label">Áreas de servicio:</span>
-                <div className="areas-tags-list">
-                  {(server.primaryAreas || []).map((area, idx) => (
-                    <span key={idx} className="area-tag">{area}</span>
-                  ))}
-                </div>
-              </div>
-
-              {/* Contact info */}
-              <div className="server-contact-box">
-                {server.phone && (
-                  <a 
-                    href={`https://wa.me/1${server.phone.replace(/[^0-9]/g, '')}`} 
-                    target="_blank" 
-                    rel="noreferrer" 
-                    className="contact-item-link"
-                    title="Enviar WhatsApp"
-                  >
-                    <Phone size={14} />
-                    <span>{server.phone}</span>
-                  </a>
-                )}
-                {server.email && (
-                  <div className="contact-item">
-                    <Mail size={14} />
-                    <span>{server.email}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Upcoming Assignments in the Calendar */}
-              <div className="server-assignments-preview">
-                <div className="assignments-title-row">
-                  <span className="as-title">Asignaciones en calendario:</span>
-                  <span className="as-count">{assignments.length}</span>
-                </div>
-                {assignments.length === 0 ? (
-                  <span className="as-empty">Sin asignaciones registradas</span>
-                ) : (
-                  <ul className="as-mini-list">
-                    {assignments.slice(0, 3).map((asg, idx) => (
-                      <li key={idx} className="as-mini-item">
-                        <span className="as-day">{asg.day}:</span>
-                        <strong className="as-role">{asg.role}</strong>
-                      </li>
-                    ))}
-                    {assignments.length > 3 && (
-                      <li className="as-more">+{assignments.length - 3} fechas más...</li>
-                    )}
-                  </ul>
-                )}
-              </div>
-            </div>
-          );
-        })}
+        <div className="view-toggle-pills" role="group" aria-label="Cambiar vista de servidores">
+          <button 
+            type="button" 
+            className={`view-toggle-btn ${directoryViewMode === 'list' ? 'active' : ''}`}
+            onClick={() => setDirectoryViewMode('list')}
+            title="Vista compacta en lista"
+          >
+            <List size={14} />
+            <span>Lista</span>
+          </button>
+          <button 
+            type="button" 
+            className={`view-toggle-btn ${directoryViewMode === 'cards' ? 'active' : ''}`}
+            onClick={() => setDirectoryViewMode('cards')}
+            title="Vista en tarjetas completas"
+          >
+            <LayoutGrid size={14} />
+            <span>Tarjetas</span>
+          </button>
+        </div>
       </div>
+
+      {filteredServers.length === 0 ? (
+        <div className="empty-sub-state">
+          <p>No se encontraron servidores con los filtros aplicados.</p>
+        </div>
+      ) : directoryViewMode === 'list' ? (
+        /* Compact List View */
+        <div className="compact-directory-list">
+          {filteredServers.map(server => {
+            const assignments = getAssignmentsForServer(server.id, server.name);
+
+            return (
+              <div key={server.id} className="compact-dir-row">
+                <div className="compact-dir-left">
+                  <div className="compact-dir-avatar">
+                    <span>{server.name.charAt(0)}</span>
+                  </div>
+                  <div className="compact-dir-identity">
+                    <div className="compact-dir-name-line">
+                      <strong className="compact-dir-name">{server.name}</strong>
+                      {server.nickname && (
+                        <span className="compact-dir-nickname">({server.nickname})</span>
+                      )}
+                    </div>
+                    <span className="compact-dir-role">{server.role}</span>
+                  </div>
+                </div>
+
+                <div className="compact-dir-right">
+                  <div className="compact-dir-groups">
+                    {server.groups?.includes('jotapece') && (
+                      <span className="group-pill-sm pill-jpc">JPC</span>
+                    )}
+                    {server.groups?.includes('siervos') && (
+                      <span className="group-pill-sm pill-siervos">121</span>
+                    )}
+                  </div>
+
+                  <span className="compact-dir-asg-pill" title={`${assignments.length} asignaciones en calendario`}>
+                    {assignments.length} {assignments.length === 1 ? 'asignación' : 'asignaciones'}
+                  </span>
+
+                  {server.phone && (
+                    <a 
+                      href={`https://wa.me/1${server.phone.replace(/[^0-9]/g, '')}`} 
+                      target="_blank" 
+                      rel="noreferrer" 
+                      className="compact-whatsapp-link"
+                      title={`WhatsApp: ${server.phone}`}
+                    >
+                      <Phone size={13} />
+                      <span className="desktop-inline">{server.phone}</span>
+                    </a>
+                  )}
+
+                  {isAdminAuthenticated && (
+                    <div className="compact-dir-actions">
+                      <button 
+                        type="button"
+                        className="icon-action-btn"
+                        onClick={() => handleEditClick(server)}
+                        title="Editar servidor"
+                      >
+                        <Edit3 size={15} />
+                      </button>
+                      <button 
+                        type="button"
+                        className="icon-action-btn btn-danger"
+                        onClick={() => handleDeleteClick(server)}
+                        title="Eliminar servidor"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        /* Detailed Grid of Servers */
+        <div className="servers-cards-grid">
+          {filteredServers.map(server => {
+            const assignments = getAssignmentsForServer(server.id, server.name);
+
+            return (
+              <div key={server.id} className="server-profile-card">
+                <div className="card-top-row">
+                  <div className="server-avatar-circle">
+                    <span>{server.name.charAt(0)}</span>
+                  </div>
+
+                  {isAdminAuthenticated && (
+                    <div className="card-actions-group">
+                      <button 
+                        className="icon-action-btn"
+                        onClick={() => handleEditClick(server)}
+                        title="Editar servidor"
+                      >
+                        <Edit3 size={16} />
+                      </button>
+                      <button 
+                        className="icon-action-btn btn-danger"
+                        onClick={() => handleDeleteClick(server)}
+                        title="Eliminar servidor"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="server-info-main">
+                  <h3 className="server-name">
+                    {server.name}
+                    {server.nickname && <span className="server-nickname"> ({server.nickname})</span>}
+                  </h3>
+                  <span className="server-role-badge">{server.role}</span>
+                </div>
+
+                {/* Group pills */}
+                <div className="server-groups-row">
+                  {server.groups?.includes('jotapece') && (
+                    <span className="group-pill-sm pill-jpc">Jotapece</span>
+                  )}
+                  {server.groups?.includes('siervos') && (
+                    <span className="group-pill-sm pill-siervos">Siervos</span>
+                  )}
+                </div>
+
+                {/* Ministry Areas */}
+                <div className="server-areas-box">
+                  <span className="areas-label">Áreas de servicio:</span>
+                  <div className="areas-tags-list">
+                    {(server.primaryAreas || []).map((area, idx) => (
+                      <span key={idx} className="area-tag">{area}</span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Contact info */}
+                <div className="server-contact-box">
+                  {server.phone && (
+                    <a 
+                      href={`https://wa.me/1${server.phone.replace(/[^0-9]/g, '')}`} 
+                      target="_blank" 
+                      rel="noreferrer" 
+                      className="contact-item-link"
+                      title="Enviar WhatsApp"
+                    >
+                      <Phone size={14} />
+                      <span>{server.phone}</span>
+                    </a>
+                  )}
+                  {server.email && (
+                    <div className="contact-item">
+                      <Mail size={14} />
+                      <span>{server.email}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Upcoming Assignments in the Calendar */}
+                <div className="server-assignments-preview">
+                  <div className="assignments-title-row">
+                    <span className="as-title">Asignaciones en calendario:</span>
+                    <span className="as-count">{assignments.length}</span>
+                  </div>
+                  {assignments.length === 0 ? (
+                    <span className="as-empty">Sin asignaciones registradas</span>
+                  ) : (
+                    <ul className="as-mini-list">
+                      {assignments.slice(0, 3).map((asg, idx) => (
+                        <li key={idx} className="as-mini-item">
+                          <span className="as-day">{asg.day}:</span>
+                          <strong className="as-role">{asg.role}</strong>
+                        </li>
+                      ))}
+                      {assignments.length > 3 && (
+                        <li className="as-more">+{assignments.length - 3} fechas más...</li>
+                      )}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Modal for Creating or Editing a Server */}
       {(isCreating || editingServer) && (
@@ -480,17 +684,46 @@ export default function ServersDirectory({
                   />
                 </div>
 
-                {/* Col 1 */}
+                {/* Col 1: Rol como Lista */}
                 <div className="form-group">
                   <label htmlFor="srv-role">Rol o Título Principal</label>
-                  <input 
+                  <select 
                     id="srv-role"
-                    type="text" 
-                    value={formData.role}
-                    onChange={e => setFormData({ ...formData, role: e.target.value })}
-                    placeholder="Ej. Líder de Jóvenes, Maestro, Sonido..."
-                    className="form-input"
-                  />
+                    value={isCustomRole ? '__custom__' : (formData.role || '')}
+                    onChange={e => {
+                      const val = e.target.value;
+                      if (val === '__custom__') {
+                        setIsCustomRole(true);
+                        setCustomRoleInput(formData.role || '');
+                      } else {
+                        setIsCustomRole(false);
+                        setFormData({ ...formData, role: val });
+                      }
+                    }}
+                    className="form-select"
+                  >
+                    <option value="" disabled>-- Selecciona un rol de la lista --</option>
+                    {allAvailableRoles.map(r => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                    <option value="__custom__">✏️ Otro rol (personalizado)...</option>
+                  </select>
+
+                  {isCustomRole && (
+                    <div className="custom-role-subfield" style={{ marginTop: '0.45rem' }}>
+                      <input 
+                        type="text"
+                        placeholder="Escribe el título o rol personalizado..."
+                        value={customRoleInput}
+                        onChange={e => {
+                          setCustomRoleInput(e.target.value);
+                          setFormData({ ...formData, role: e.target.value });
+                        }}
+                        autoFocus
+                        className="form-input"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* Col 2 */}
@@ -529,17 +762,164 @@ export default function ServersDirectory({
                   </div>
                 </div>
 
-                {/* Full Width */}
-                <div className="form-group full-width">
-                  <label htmlFor="srv-areas">Áreas de servicio principales (separadas por comas)</label>
-                  <input 
-                    id="srv-areas"
-                    type="text" 
-                    value={formData.primaryAreas}
-                    onChange={e => setFormData({ ...formData, primaryAreas: e.target.value })}
-                    placeholder="Ej. Predicación, Alabanza, Sonido, Proyección, Bienvenida, Refrigerio"
-                    className="form-input"
-                  />
+                {/* Full Width: Áreas de Servicio Multi-Selección (Expandible/Contraíble) */}
+                <div className="form-group full-width areas-collapsible-group">
+                  <div className="areas-field-header">
+                    <div className="areas-label-flex">
+                      <label htmlFor="areas-toggle-trigger">Áreas de servicio en las que colabora:</label>
+                      <span className="areas-selected-counter">
+                        {formData.primaryAreas?.length || 0} {formData.primaryAreas?.length === 1 ? 'área' : 'áreas'}
+                      </span>
+                    </div>
+
+                    <button 
+                      type="button"
+                      id="areas-toggle-trigger"
+                      className={`btn-toggle-areas-expand ${isAreasExpanded ? 'is-expanded' : ''}`}
+                      onClick={() => setIsAreasExpanded(!isAreasExpanded)}
+                      title={isAreasExpanded ? "Contraer lista de áreas" : "Expandir lista de áreas"}
+                    >
+                      <span>{isAreasExpanded ? 'Contraer' : 'Expandir lista'}</span>
+                      {isAreasExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                    </button>
+                  </div>
+
+                  {/* VISTA CONTRAÍDA: Resumen compacto ideal para celular */}
+                  {!isAreasExpanded && (
+                    <div className="areas-compact-preview" onClick={() => setIsAreasExpanded(true)}>
+                      {formData.primaryAreas?.length > 0 ? (
+                        <div className="compact-selected-pills">
+                          {formData.primaryAreas.map(area => (
+                            <span key={area} className="compact-area-pill">
+                              <Check size={12} className="check-icon-compact" />
+                              <span>{area}</span>
+                              <button 
+                                type="button"
+                                className="btn-remove-pill"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setFormData({
+                                    ...formData,
+                                    primaryAreas: formData.primaryAreas.filter(a => a !== area)
+                                  });
+                                }}
+                                title={`Quitar ${area}`}
+                              >
+                                <X size={11} />
+                              </button>
+                            </span>
+                          ))}
+                          <button 
+                            type="button" 
+                            className="btn-add-more-areas"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setIsAreasExpanded(true);
+                            }}
+                          >
+                            <Plus size={12} />
+                            <span>Modificar / Elegir más</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="compact-empty-state">
+                          <span className="compact-empty-text">Ninguna área seleccionada aún</span>
+                          <span className="compact-click-hint">Toca aquí para desplegar las opciones</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* VISTA EXPANDIDA: Lista completa de áreas y campo para agregar nueva */}
+                  {isAreasExpanded && (
+                    <div className="areas-multiselect-container is-open">
+                      <div className="areas-chips-grid">
+                        {allAvailableAreas.map(area => {
+                          const isSelected = (formData.primaryAreas || []).includes(area);
+                          return (
+                            <button 
+                              key={area}
+                              type="button"
+                              className={`area-toggle-chip ${isSelected ? 'active' : ''}`}
+                              onClick={() => {
+                                const cur = formData.primaryAreas || [];
+                                if (isSelected) {
+                                  setFormData({
+                                    ...formData,
+                                    primaryAreas: cur.filter(a => a !== area)
+                                  });
+                                } else {
+                                  setFormData({
+                                    ...formData,
+                                    primaryAreas: [...cur, area]
+                                  });
+                                }
+                              }}
+                              title={isSelected ? `Quitar ${area}` : `Añadir ${area}`}
+                            >
+                              <span className="area-chip-icon">
+                                {isSelected ? <Check size={13} /> : <Plus size={13} />}
+                              </span>
+                              <span>{area}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Add custom area if not present in list */}
+                      <div className="add-custom-area-inline">
+                        <input 
+                          type="text"
+                          placeholder="¿Otra área no listada? (ej. Fotografía, Decoración...)"
+                          value={customAreaInput}
+                          onChange={e => setCustomAreaInput(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const trimmed = customAreaInput.trim();
+                              if (trimmed && !(formData.primaryAreas || []).includes(trimmed)) {
+                                setFormData({
+                                  ...formData,
+                                  primaryAreas: [...(formData.primaryAreas || []), trimmed]
+                                });
+                                setCustomAreaInput('');
+                              }
+                            }
+                          }}
+                          className="form-input custom-area-input"
+                        />
+                        <button 
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => {
+                            const trimmed = customAreaInput.trim();
+                            if (trimmed && !(formData.primaryAreas || []).includes(trimmed)) {
+                              setFormData({
+                                ...formData,
+                                primaryAreas: [...(formData.primaryAreas || []), trimmed]
+                              });
+                              setCustomAreaInput('');
+                            }
+                          }}
+                        >
+                          <Plus size={14} />
+                          <span>Añadir</span>
+                        </button>
+                      </div>
+
+                      {/* Botón para contraer al terminar de seleccionar */}
+                      <div className="areas-collapse-footer">
+                        <button 
+                          type="button"
+                          className="btn-collapse-action"
+                          onClick={() => setIsAreasExpanded(false)}
+                        >
+                          <ChevronUp size={14} />
+                          <span>Listo · Contraer lista ({formData.primaryAreas?.length || 0} seleccionadas)</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Col 1 */}

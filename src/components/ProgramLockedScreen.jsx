@@ -1,7 +1,7 @@
 import React from 'react';
-import { Lock, Clock, Shield, Sparkles, Key, AlertTriangle } from './Icons';
+import { Lock, Clock, Shield, Sparkles, Key, AlertTriangle, Users } from './Icons';
 
-export default function ProgramLockedScreen({ lockedMessage, onOpenAdminLogin }) {
+export default function ProgramLockedScreen({ lockedMessage, onOpenAdminLogin, onNavigateToServers }) {
   return (
     <div className="program-locked-screen-wrap">
       <div className="program-locked-card">
@@ -29,6 +29,27 @@ export default function ProgramLockedScreen({ lockedMessage, onOpenAdminLogin })
           </p>
         </div>
 
+        {/* Action to view servers directory (which IS allowed) */}
+        {onNavigateToServers && (
+          <div className="locked-servers-allowed-box">
+            <div className="allowed-badge-pill">
+              <span className="allowed-dot"></span>
+              <span>Sección Habilitada</span>
+            </div>
+            <p className="allowed-text">
+              El <strong>Directorio de Servidores y Líderes</strong> sí se encuentra disponible para consulta del equipo.
+            </p>
+            <button 
+              type="button"
+              className="btn btn-secondary btn-locked-servers"
+              onClick={onNavigateToServers}
+            >
+              <Users size={18} />
+              <span>Ver Directorio de Servidores</span>
+            </button>
+          </div>
+        )}
+
         <div className="locked-info-grid">
           <div className="locked-info-item">
             <span className="info-title">Jotapece (JPC)</span>
@@ -43,7 +64,7 @@ export default function ProgramLockedScreen({ lockedMessage, onOpenAdminLogin })
 
         <div className="locked-admin-action-box">
           <p className="locked-admin-prompt">
-            ¿Eres parte del equipo ministerial o administrativo encargado de configurar el programa?
+            ¿Eres parte del equipo administrativo encargado de preparar el programa?
           </p>
           <button 
             type="button" 

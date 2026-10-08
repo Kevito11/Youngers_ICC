@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Header from './components/Header';
 import GeneralCalendarView from './components/GeneralCalendarView';
 import TimelineVisual from './components/TimelineVisual';
@@ -9,6 +9,7 @@ import PeriodsHistoryView from './components/PeriodsHistoryView';
 import FooterNotes from './components/FooterNotes';
 import PasswordAuthModal from './components/PasswordAuthModal';
 import ProgramLockedScreen from './components/ProgramLockedScreen';
+import ScrollToTopButton from './components/ScrollToTopButton';
 import { Lock, Key } from './components/Icons';
 
 import {
@@ -28,6 +29,7 @@ import {
   INITIAL_ANNOUNCEMENTS,
   DEFAULT_LOCKED_MESSAGE
 } from './data/initialData';
+import { fetchFromGoogleSheets, syncToGoogleSheets } from './services/googleSheetsService';
 
 import './App.css';
 
@@ -49,7 +51,7 @@ const tabToPath = (tab) => {
     case 'periodos': return '/periodos';
     case 'servers': return '/servidores';
     case 'admin': return '/admin';
-    default: return '/calendario';
+    default: return '/';
   }
 };
 
@@ -59,15 +61,20 @@ export default function App() {
     return pathToTab(window.location.pathname);
   });
 
-  const [activities, setActivities] = useState(() => loadStoredActivities());
-  const [servers, setServers] = useState(() => loadStoredServers());
-  const [announcements, setAnnouncements] = useState(() => loadStoredAnnouncements());
+  // State loaded exclusively from Google Sheets
+  const [activities, setActivities] = useState([]);
+  const [servers, setServers] = useState([]);
+  const [announcements, setAnnouncements] = useState([]);
+  const [isProgramLocked, setIsProgramLocked] = useState(false);
+  const [lockedMessage, setLockedMessage] = useState('');
   
-  // Program lock state (controlled from Admin)
-  const [isProgramLocked, setIsProgramLocked] = useState(() => loadStoredProgramLocked());
-  const [lockedMessage, setLockedMessage] = useState(() => loadStoredLockedMessage());
+  // Cloud loading & sync states
+  const [isLoadingSheets, setIsLoadingSheets] = useState(true);
+  const [sheetsSyncState, setSheetsSyncState] = useState('idle'); // 'idle' | 'syncing' | 'saved' | 'error'
+  const [sheetsError, setSheetsError] = useState(null);
+  const syncTimerRef = useRef(null);
 
-  // Password authentication state for modification (temp pwd: 1234)
+  // Password authentication state for administrative modification
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(() => {
     return sessionStorage.getItem('youngers_admin_auth_v1') === 'true';
   });
@@ -83,14 +90,62 @@ export default function App() {
   const [selectedActivity, setSelectedActivity] = useState(null);
   const [activityToEditInAdmin, setActivityToEditInAdmin] = useState(null);
 
+  // Initial load directly from Google Apps Script / Sheet
+  const loadFromCloud = async () => {
+    setIsLoadingSheets(true);
+    setSheetsError(null);
+    try {
+      // Clear old local cache to guarantee 100% cloud reading
+      resetAllToDefaults();
+
+      const data = await fetchFromGoogleSheets();
+      if (data && data.success) {
+        setActivities(Array.isArray(data.activities) ? data.activities : []);
+        setServers(Array.isArray(data.servers) ? data.servers : []);
+        setAnnouncements(Array.isArray(data.announcements) ? data.announcements : []);
+        setIsProgramLocked(Boolean(data.isProgramLocked));
+        setLockedMessage(data.lockedMessage || DEFAULT_LOCKED_MESSAGE);
+      } else {
+        throw new Error(data?.error || 'No se pudieron recuperar los datos de Google Sheets');
+      }
+    } catch (err) {
+      console.error('Error al consultar Google Sheets:', err);
+      setSheetsError(err.message || 'Error de conexión con el script de Google Sheets');
+    } finally {
+      setIsLoadingSheets(false);
+    }
+  };
+
+  useEffect(() => {
+    loadFromCloud();
+  }, []);
+
+  // Trigger real-time sync directly to Google Sheets on any mutation
+  const triggerCloudSync = async (newActs, newSrvs, extras = {}) => {
+    setSheetsSyncState('syncing');
+    try {
+      await syncToGoogleSheets(
+        newActs !== undefined ? newActs : activities,
+        newSrvs !== undefined ? newSrvs : servers,
+        {
+          announcements: extras.announcements !== undefined ? extras.announcements : announcements,
+          isProgramLocked: extras.isProgramLocked !== undefined ? extras.isProgramLocked : isProgramLocked,
+          lockedMessage: extras.lockedMessage !== undefined ? extras.lockedMessage : lockedMessage
+        }
+      );
+      setSheetsSyncState('saved');
+      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+      syncTimerRef.current = setTimeout(() => setSheetsSyncState('idle'), 3000);
+    } catch (err) {
+      console.error('Error al sincronizar con Google Sheets:', err);
+      setSheetsSyncState('error');
+    }
+  };
+
   // Sync state to URL and listen to browser Back / Forward buttons
   useEffect(() => {
     const currentPath = window.location.pathname;
     const initialTab = pathToTab(currentPath);
-    // If user opened root '/', normalize to '/calendario' so the URL is never stuck at root
-    if (currentPath === '/' || currentPath === '') {
-      window.history.replaceState(null, '', tabToPath(initialTab));
-    }
 
     // Auto-prompt password if user navigates directly to /admin while unauthenticated
     if (initialTab === 'admin' && !isAdminAuthenticated) {
@@ -110,19 +165,6 @@ export default function App() {
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
-
-  // Sync to localStorage
-  useEffect(() => {
-    saveStoredActivities(activities);
-  }, [activities]);
-
-  useEffect(() => {
-    saveStoredServers(servers);
-  }, [servers]);
-
-  useEffect(() => {
-    saveStoredAnnouncements(announcements);
-  }, [announcements]);
 
   // Navigate to a tab and update the browser URL
   const navigateToTab = (tab, replace = false) => {
@@ -191,11 +233,14 @@ export default function App() {
     setSelectedActivity(null);
   };
 
-  // Update activity (e.g. check off program items in live view)
+  // Update activity (e.g. check off program items in live view - Only Admin)
   const handleUpdateActivity = (updatedAct) => {
+    const isAuth = isAdminAuthenticated || sessionStorage.getItem('youngers_admin_auth_v1') === 'true';
+    if (!isAuth) return;
     const nextList = activities.map(a => a.id === updatedAct.id ? updatedAct : a);
     setActivities(nextList);
     setSelectedActivity(updatedAct);
+    triggerCloudSync(nextList, servers);
   };
 
   // Jump to Admin to edit (Protected by password)
@@ -210,7 +255,7 @@ export default function App() {
     });
   };
 
-  // Save activity in Admin (add or update)
+  // Save activity in Admin (add or update) -> Direct to Google Sheets
   const handleSaveActivity = (activity) => {
     const exists = activities.some(a => a.id === activity.id);
     let nextList;
@@ -220,13 +265,15 @@ export default function App() {
       nextList = [...activities, activity];
     }
     setActivities(nextList);
+    triggerCloudSync(nextList, servers);
   };
 
-  // Delete activity in Admin (Protected by administrative password)
+  // Delete activity in Admin -> Direct to Google Sheets
   const handleDeleteActivity = (actId) => {
     requireModificationAuth(() => {
       const nextList = activities.filter(a => a.id !== actId);
       setActivities(nextList);
+      triggerCloudSync(nextList, servers);
     }, {
       title: 'Eliminar Actividad',
       description: 'Introduce la contraseña administrativa para autorizar la eliminación de esta actividad.'
@@ -244,55 +291,77 @@ export default function App() {
     });
   };
 
-  // Server management
+  // Server management -> Direct to Google Sheets
   const handleAddServer = (newServer) => {
-    setServers([...servers, newServer]);
+    const nextServers = [...servers, newServer];
+    setServers(nextServers);
+    triggerCloudSync(activities, nextServers);
   };
 
   const handleUpdateServer = (updatedServer) => {
-    setServers(servers.map(s => s.id === updatedServer.id ? updatedServer : s));
+    const nextServers = servers.map(s => s.id === updatedServer.id ? updatedServer : s);
+    setServers(nextServers);
+    triggerCloudSync(activities, nextServers);
   };
 
   const handleDeleteServer = (serverId) => {
     requireModificationAuth(() => {
-      setServers(servers.filter(s => s.id !== serverId));
+      const nextServers = servers.filter(s => s.id !== serverId);
+      setServers(nextServers);
+      triggerCloudSync(activities, nextServers);
     }, {
       title: 'Eliminar Servidor',
       description: 'Introduce la contraseña administrativa para autorizar la eliminación de este servidor.'
     });
   };
 
-  // Update announcements
+  // Update announcements -> Direct to Google Sheets
   const handleUpdateAnnouncements = (newAnnouncements) => {
     setAnnouncements(newAnnouncements);
+    triggerCloudSync(activities, servers, { announcements: newAnnouncements });
   };
 
-  // Program lock toggle
-  const handleToggleProgramLocked = () => {
-    const nextState = !isProgramLocked;
-    setIsProgramLocked(nextState);
-    saveStoredProgramLocked(nextState);
+  // Program lock toggle per activity -> Direct to Google Sheets
+  const handleToggleActivityLock = (activityId) => {
+    requireModificationAuth(() => {
+      const nextList = activities.map(a => {
+        if (a.id === activityId) {
+          const nextLock = !Boolean(a.isProgramLocked);
+          const updated = { ...a, isProgramLocked: nextLock };
+          if (selectedActivity && selectedActivity.id === activityId) {
+            setSelectedActivity(updated);
+          }
+          return updated;
+        }
+        return a;
+      });
+      setActivities(nextList);
+      triggerCloudSync(nextList, servers);
+    }, {
+      title: 'Control de Acceso al Programa',
+      description: 'Introduce la clave administrativa para cambiar el bloqueo del programa de esta actividad.'
+    });
   };
 
-  // Program lock message update
+  // Program lock message update -> Direct to Google Sheets
   const handleUpdateLockedMessage = (newMsg) => {
     setLockedMessage(newMsg);
-    saveStoredLockedMessage(newMsg);
+    triggerCloudSync(activities, servers, { lockedMessage: newMsg });
   };
 
-  // Reset defaults
-  const handleResetDefaults = () => {
-    resetAllToDefaults();
+  // Reset defaults -> Seeds full official calendar to Google Sheets
+  const handleResetDefaults = async () => {
     setActivities(INITIAL_ACTIVITIES);
     setServers(INITIAL_SERVERS);
     setAnnouncements(INITIAL_ANNOUNCEMENTS);
     setIsProgramLocked(false);
     setLockedMessage(DEFAULT_LOCKED_MESSAGE);
+    await triggerCloudSync(INITIAL_ACTIVITIES, INITIAL_SERVERS, {
+      announcements: INITIAL_ANNOUNCEMENTS,
+      isProgramLocked: false,
+      lockedMessage: DEFAULT_LOCKED_MESSAGE
+    });
   };
-
-  // Should we show the locked screen?
-  // When program is locked AND user is NOT authenticated as admin AND not in admin route
-  const shouldShowLockedScreen = isProgramLocked && !isAdminAuthenticated && currentTab !== 'admin';
 
   return (
     <div className="app-root">
@@ -303,48 +372,42 @@ export default function App() {
         onNewActivity={handleNewActivityClick}
         activitiesCount={activities.length}
         serversCount={servers.length}
-        isProgramLocked={isProgramLocked}
         isAdminAuthenticated={isAdminAuthenticated}
+        onLogoutAdmin={handleAdminLogout}
+        sheetsSyncState={sheetsSyncState}
       />
 
-      {/* Main View Area */}
-      <main className="main-content-area">
-        <div className="container">
-          {/* Admin banner if viewing while program is locked */}
-          {isProgramLocked && isAdminAuthenticated && (
-            <div className="admin-locked-notice-banner">
-              <div className="banner-notice-inner">
-                <Lock size={18} />
-                <span>
-                  <strong>Aviso de Administración:</strong> El acceso público al programa está actualmente <strong>bloqueado</strong> (no listo para el público). Como administrador autenticado, puedes visualizar y modificar las actividades.
-                </span>
-              </div>
-              <button 
-                className="btn-unlock-quick"
-                onClick={handleToggleProgramLocked}
-                title="Habilitar acceso público ahora"
-              >
-                Desbloquear Acceso Público
-              </button>
+      {/* Cloud Error Alert if offline or connection issue */}
+      {sheetsError && (
+        <div className="container" style={{ marginTop: '1rem' }}>
+          <div className="sheets-error-banner">
+            <div>
+              <strong>⚠️ Conexión con Google Sheets:</strong> {sheetsError}
             </div>
-          )}
+            <button className="btn btn-secondary btn-sm" onClick={loadFromCloud}>
+              Reintentar Conexión
+            </button>
+          </div>
+        </div>
+      )}
 
-          {/* 1. If program is locked and user is a normal visitor */}
-          {shouldShowLockedScreen ? (
-            <ProgramLockedScreen
-              lockedMessage={lockedMessage}
-              onOpenAdminLogin={() => {
-                requireModificationAuth(() => {
-                  navigateToTab('admin');
-                }, {
-                  title: 'Acceso de Administrador',
-                  description: 'Introduce la clave de administración para acceder al panel de control y preparar o desbloquear el programa.'
-                });
-              }}
-            />
-          ) : (
-            /* 2. Normal View Routing */
-            <>
+      {/* Cloud Loading Screen on initial fetch */}
+      {isLoadingSheets ? (
+        <div className="sheets-loading-screen">
+          <div className="sheets-loading-card">
+            <div className="sheets-spinner"></div>
+            <h3>Cargando datos desde Google Sheets...</h3>
+            <p>Conectando con tu hoja de cálculo para leer en vivo todas las listas de actividades y servidores.</p>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Main View Area */}
+          <main className="main-content-area">
+        <div className="container">
+
+          {/* Normal View Routing - Calendar is always visible */}
+          <>
               {currentTab === 'general' && (
                 <GeneralCalendarView
                   activities={activities}
@@ -384,6 +447,7 @@ export default function App() {
                   onUpdateServer={handleUpdateServer}
                   onDeleteServer={handleDeleteServer}
                   onRequireAuth={requireModificationAuth}
+                  isAdminAuthenticated={isAdminAuthenticated}
                 />
               )}
 
@@ -399,12 +463,11 @@ export default function App() {
                     onUpdateAnnouncements={handleUpdateAnnouncements}
                     activityToEdit={activityToEditInAdmin}
                     clearActivityToEdit={() => setActivityToEditInAdmin(null)}
-                    isProgramLocked={isProgramLocked}
-                    onToggleProgramLocked={handleToggleProgramLocked}
                     lockedMessage={lockedMessage}
                     onUpdateLockedMessage={handleUpdateLockedMessage}
                     onLogoutAdmin={handleAdminLogout}
                     onRequireAuth={requireModificationAuth}
+                    onToggleActivityLock={handleToggleActivityLock}
                   />
                 ) : (
                   /* Admin Gate if user visits /admin without auth */
@@ -420,8 +483,8 @@ export default function App() {
                       className="btn btn-primary btn-gate-enter"
                       onClick={() => {
                         requireModificationAuth(() => {}, {
-                          title: 'Acceso a la Administración',
-                          description: 'Introduce la clave administrativa para acceder.'
+                           title: 'Acceso a la Administración',
+                           description: 'Introduce la clave administrativa para acceder.'
                         });
                       }}
                     >
@@ -432,12 +495,11 @@ export default function App() {
                 )
               )}
             </>
-          )}
         </div>
       </main>
 
-      {/* Footer Notes (shown on calendar views when not locked) */}
-      {!shouldShowLockedScreen && (currentTab === 'general' || currentTab === 'jotapece' || currentTab === 'siervos') && (
+      {/* Footer Notes (shown on calendar views) */}
+      {(currentTab === 'general' || currentTab === 'jotapece' || currentTab === 'siervos') && (
         <FooterNotes announcements={announcements} />
       )}
 
@@ -448,10 +510,14 @@ export default function App() {
           onClose={handleCloseModal}
           onEditActivity={handleEditActivityInAdmin}
           onUpdateActivity={handleUpdateActivity}
+          isAdminAuthenticated={isAdminAuthenticated}
+          lockedMessage={lockedMessage}
+          onRequireAuth={requireModificationAuth}
+          onToggleActivityLock={handleToggleActivityLock}
         />
       )}
 
-      {/* Password Authentication Modal for Modification (Pwd: 1234) */}
+      {/* Password Authentication Modal for Administrative Actions */}
       <PasswordAuthModal
         isOpen={authModal.isOpen}
         onClose={() => setAuthModal({ isOpen: false, title: '', description: '', onSuccess: null })}
@@ -459,6 +525,11 @@ export default function App() {
         title={authModal.title}
         description={authModal.description}
       />
+
+      {/* Floating Scroll-To-Top Button */}
+      <ScrollToTopButton />
+        </>
+      )}
     </div>
   );
 }

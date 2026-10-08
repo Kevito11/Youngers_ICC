@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { Calendar, Search, Filter, Sparkles, ChevronRight, MapPin, Clock } from './Icons';
+import { Calendar, Search, Filter, Sparkles, ChevronRight, ChevronLeft, MapPin, Clock, Lock } from './Icons';
 
 export default function GeneralCalendarView({ activities, onSelectActivity }) {
   const [filterType, setFilterType] = useState('all'); // all | siervos | jotapece | ambos | otros
   const [searchQuery, setSearchQuery] = useState('');
+  const [pageSize, setPageSize] = useState('5'); // '5' | '10' | '15' | '20' | 'all'
+  const [currentPage, setCurrentPage] = useState(1);
 
   const filteredActivities = activities.filter(activity => {
     // Search query filter
@@ -25,6 +27,18 @@ export default function GeneralCalendarView({ activities, onSelectActivity }) {
     }
     return true;
   });
+
+  const totalItems = filteredActivities.length;
+  const isPaged = pageSize !== 'all';
+  const numericLimit = parseInt(pageSize, 10) || 5;
+  const totalPages = isPaged ? Math.max(1, Math.ceil(totalItems / numericLimit)) : 1;
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+
+  const startIndex = isPaged ? (safeCurrentPage - 1) * numericLimit : 0;
+  const endIndex = isPaged ? Math.min(startIndex + numericLimit, totalItems) : totalItems;
+  const displayedActivities = isPaged 
+    ? filteredActivities.slice(startIndex, endIndex)
+    : filteredActivities;
 
   return (
     <div className="general-calendar-view">
@@ -83,55 +97,80 @@ export default function GeneralCalendarView({ activities, onSelectActivity }) {
         </div>
       </div>
 
-      {/* Filter Chips Bar */}
+      {/* Filter Chips & View Limit Controls Bar */}
       <div className="calendar-controls-bar">
         <div className="filter-chips-list">
           <button
             className={`filter-chip ${filterType === 'all' ? 'active' : ''}`}
-            onClick={() => setFilterType('all')}
+            onClick={() => { setFilterType('all'); setCurrentPage(1); }}
           >
             Todos
           </button>
           
           <button
             className={`filter-chip chip-siervos ${filterType === 'siervos' ? 'active' : ''}`}
-            onClick={() => setFilterType('siervos')}
+            onClick={() => { setFilterType('siervos'); setCurrentPage(1); }}
           >
             Siervos
           </button>
 
           <button
             className={`filter-chip chip-jpc ${filterType === 'jotapece' ? 'active' : ''}`}
-            onClick={() => setFilterType('jotapece')}
+            onClick={() => { setFilterType('jotapece'); setCurrentPage(1); }}
           >
             Jotapece
           </button>
 
           <button
             className={`filter-chip chip-ambos ${filterType === 'ambos' ? 'active' : ''}`}
-            onClick={() => setFilterType('ambos')}
+            onClick={() => { setFilterType('ambos'); setCurrentPage(1); }}
           >
             Ambos grupos
           </button>
 
           <button
             className={`filter-chip chip-otros ${filterType === 'otros' ? 'active' : ''}`}
-            onClick={() => setFilterType('otros')}
+            onClick={() => { setFilterType('otros'); setCurrentPage(1); }}
           >
             Fuera de ICC / sin reunión
           </button>
         </div>
 
-        {/* Search input */}
-        <div className="search-input-wrapper">
-          <Search size={16} className="search-icon" />
-          <input
-            type="text"
-            placeholder="Buscar actividad, mensaje o lugar..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="search-input"
-          />
+        {/* View Limit Selector and Search Container */}
+        <div className="calendar-secondary-controls">
+          <div className="page-limit-selector" title="Cantidad de servicios a visualizar por página">
+            <span className="limit-selector-label">Ver:</span>
+            <div className="limit-pills-group">
+              {['5', '10', '15', '20', 'all'].map(opt => (
+                <button
+                  key={opt}
+                  type="button"
+                  className={`limit-pill-btn ${pageSize === opt ? 'active' : ''}`}
+                  onClick={() => {
+                    setPageSize(opt);
+                    setCurrentPage(1);
+                  }}
+                  title={opt === 'all' ? 'Ver todos los servicios' : `Ver ${opt} servicios por página`}
+                >
+                  {opt === 'all' ? 'Todos' : opt}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="search-input-wrapper">
+            <Search size={16} className="search-icon" />
+            <input
+              type="text"
+              placeholder="Buscar actividad, mensaje o lugar..."
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="search-input"
+            />
+          </div>
         </div>
       </div>
 
@@ -148,7 +187,7 @@ export default function GeneralCalendarView({ activities, onSelectActivity }) {
             <p>No se encontraron actividades con los filtros seleccionados.</p>
           </div>
         ) : (
-          filteredActivities.map(activity => {
+          displayedActivities.map(activity => {
             const isJpc = activity.group === 'jotapece';
             const isSiervos = activity.group === 'siervos';
             const isAmbos = activity.group === 'ambos';
@@ -196,6 +235,12 @@ export default function GeneralCalendarView({ activities, onSelectActivity }) {
                       {(activity.isCustomLocation || activity.locationType === 'fuera') && (
                         <span className="fuera-badge-indicator" title={activity.customLocationAddress || 'Ubicación fuera de lo establecido'}>
                           📍 Fuera de lo establecido
+                        </span>
+                      )}
+                      {activity.isProgramLocked && (
+                        <span className="card-locked-tag" title="El programa minuto a minuto de esta fecha está en preparación">
+                          <Lock size={11} />
+                          <span>Programa en preparación</span>
                         </span>
                       )}
                     </div>
@@ -279,6 +324,67 @@ export default function GeneralCalendarView({ activities, onSelectActivity }) {
           })
         )}
       </div>
+
+      {/* Pagination Bar when pagination is active */}
+      {isPaged && totalPages > 1 && (
+        <div className="pagination-bar">
+          <div className="pagination-info">
+            Mostrando <strong>{totalItems > 0 ? startIndex + 1 : 0}–{endIndex}</strong> de <strong>{totalItems}</strong> servicios
+          </div>
+          <div className="pagination-nav">
+            <button
+              type="button"
+              className="btn-page-nav"
+              disabled={safeCurrentPage <= 1}
+              onClick={() => {
+                setCurrentPage(p => Math.max(1, p - 1));
+                window.scrollTo({ top: 380, behavior: 'smooth' });
+              }}
+              title="Página anterior"
+            >
+              <ChevronLeft size={16} />
+              <span>Anterior</span>
+            </button>
+            <div className="pagination-numbers">
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+                <button
+                  key={pageNum}
+                  type="button"
+                  className={`page-num-btn ${pageNum === safeCurrentPage ? 'active' : ''}`}
+                  onClick={() => {
+                    setCurrentPage(pageNum);
+                    window.scrollTo({ top: 380, behavior: 'smooth' });
+                  }}
+                >
+                  {pageNum}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="btn-page-nav"
+              disabled={safeCurrentPage >= totalPages}
+              onClick={() => {
+                setCurrentPage(p => Math.min(totalPages, p + 1));
+                window.scrollTo({ top: 380, behavior: 'smooth' });
+              }}
+              title="Página siguiente"
+            >
+              <span>Siguiente</span>
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Summary note when displaying all activities or single page */}
+      {(!isPaged || totalPages <= 1) && totalItems > 0 && (
+        <div className="pagination-bar pagination-all-summary">
+          <span className="pagination-info">
+            Mostrando todos los <strong>{totalItems}</strong> servicios en pantalla
+          </span>
+        </div>
+      )}
     </div>
   );
 }

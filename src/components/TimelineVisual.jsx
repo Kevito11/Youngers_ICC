@@ -1,13 +1,27 @@
-import React from 'react';
-import { Calendar, Clock, MapPin, Users, ChevronRight, Sparkles } from './Icons';
+import React, { useState } from 'react';
+import { Calendar, Clock, MapPin, Users, ChevronRight, ChevronLeft, Sparkles, Lock } from './Icons';
 
 export default function TimelineVisual({ groupType, activities, onSelectActivity }) {
   const isJpc = groupType === 'jotapece';
+  const [pageSize, setPageSize] = useState('5');
+  const [currentPage, setCurrentPage] = useState(1);
   
   // Filter activities for this group (also include 'ambos' group activities like Cena de Jóvenes o Los Manguitos)
   const groupActivities = activities.filter(
     a => a.group === groupType || a.group === 'ambos'
   );
+
+  const totalItems = groupActivities.length;
+  const isPaged = pageSize !== 'all';
+  const numericLimit = parseInt(pageSize, 10) || 5;
+  const totalPages = isPaged ? Math.max(1, Math.ceil(totalItems / numericLimit)) : 1;
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+
+  const startIndex = isPaged ? (safeCurrentPage - 1) * numericLimit : 0;
+  const endIndex = isPaged ? Math.min(startIndex + numericLimit, totalItems) : totalItems;
+  const displayedActivities = isPaged 
+    ? groupActivities.slice(startIndex, endIndex)
+    : groupActivities;
 
   // Compute counters
   const multiusosCount = groupActivities.filter(a => a.locationType === 'multiusos').length;
@@ -81,10 +95,32 @@ export default function TimelineVisual({ groupType, activities, onSelectActivity
         )}
       </div>
 
-      {/* Interactive notice */}
-      <div className="interactive-hint">
-        <Sparkles size={15} />
-        <span>Pulsa cualquier actividad para ver su <strong>programa minuto a minuto</strong> y la asignación de <strong>servidores</strong>.</span>
+      {/* Interactive notice and Limit Selector */}
+      <div className="timeline-top-controls-bar">
+        <div className="interactive-hint">
+          <Sparkles size={15} />
+          <span>Pulsa cualquier actividad para ver su <strong>programa minuto a minuto</strong> y la asignación de <strong>servidores</strong>.</span>
+        </div>
+
+        <div className="page-limit-selector" title="Cantidad de servicios a visualizar por página">
+          <span className="limit-selector-label">Ver:</span>
+          <div className="limit-pills-group">
+            {['5', '10', '15', '20', 'all'].map(opt => (
+              <button
+                key={opt}
+                type="button"
+                className={`limit-pill-btn ${pageSize === opt ? 'active' : ''}`}
+                onClick={() => {
+                  setPageSize(opt);
+                  setCurrentPage(1);
+                }}
+                title={opt === 'all' ? 'Ver todos los servicios' : `Ver ${opt} servicios por página`}
+              >
+                {opt === 'all' ? 'Todos' : opt}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* Timeline Table Card */}
@@ -107,7 +143,7 @@ export default function TimelineVisual({ groupType, activities, onSelectActivity
 
         {/* Rows */}
         <div className="timeline-rows-list">
-          {groupActivities.map(activity => {
+          {displayedActivities.map(activity => {
             const isAuditorio = activity.locationType === 'auditorio';
             const isMultiusos = activity.locationType === 'multiusos';
             const isFuera = activity.locationType === 'fuera';
@@ -152,6 +188,12 @@ export default function TimelineVisual({ groupType, activities, onSelectActivity
                       )}
                       {activity.group === 'ambos' && (
                         <span className="badge-shared">Siervos y Jotapece</span>
+                      )}
+                      {activity.isProgramLocked && (
+                        <span className="card-locked-tag" title="El programa minuto a minuto de esta fecha está en preparación">
+                          <Lock size={11} />
+                          <span>Programa en preparación</span>
+                        </span>
                       )}
                     </div>
                   </div>
@@ -260,6 +302,67 @@ export default function TimelineVisual({ groupType, activities, onSelectActivity
           })}
         </div>
       </div>
+
+      {/* Pagination Bar when pagination is active */}
+      {isPaged && totalPages > 1 && (
+        <div className="pagination-bar">
+          <div className="pagination-info">
+            Mostrando <strong>{totalItems > 0 ? startIndex + 1 : 0}–{endIndex}</strong> de <strong>{totalItems}</strong> servicios
+          </div>
+          <div className="pagination-nav">
+            <button
+              type="button"
+              className="btn-page-nav"
+              disabled={safeCurrentPage <= 1}
+              onClick={() => {
+                setCurrentPage(p => Math.max(1, p - 1));
+                window.scrollTo({ top: 380, behavior: 'smooth' });
+              }}
+              title="Página anterior"
+            >
+              <ChevronLeft size={16} />
+              <span>Anterior</span>
+            </button>
+            <div className="pagination-numbers">
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+                <button
+                  key={pageNum}
+                  type="button"
+                  className={`page-num-btn ${pageNum === safeCurrentPage ? 'active' : ''}`}
+                  onClick={() => {
+                    setCurrentPage(pageNum);
+                    window.scrollTo({ top: 380, behavior: 'smooth' });
+                  }}
+                >
+                  {pageNum}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="btn-page-nav"
+              disabled={safeCurrentPage >= totalPages}
+              onClick={() => {
+                setCurrentPage(p => Math.min(totalPages, p + 1));
+                window.scrollTo({ top: 380, behavior: 'smooth' });
+              }}
+              title="Página siguiente"
+            >
+              <span>Siguiente</span>
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Summary note when displaying all activities or single page */}
+      {(!isPaged || totalPages <= 1) && totalItems > 0 && (
+        <div className="pagination-bar pagination-all-summary">
+          <span className="pagination-info">
+            Mostrando todos los <strong>{totalItems}</strong> servicios en pantalla
+          </span>
+        </div>
+      )}
     </div>
   );
 }

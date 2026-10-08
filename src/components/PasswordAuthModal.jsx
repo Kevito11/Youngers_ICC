@@ -37,8 +37,9 @@ export default function PasswordAuthModal({ isOpen, onClose, onSuccess, title, d
     e.preventDefault();
     setError('');
 
-    // Temporary password as requested by user
-    if (password === '1234') {
+    const expectedPassword = (import.meta.env.VITE_ADMIN_PASSWORD || '1234').trim();
+
+    if (password === expectedPassword) {
       setIsSubmitting(true);
       setTimeout(() => {
         setIsSubmitting(false);

@@ -2,22 +2,36 @@ import React, { useState, useEffect } from 'react';
 import { 
   X, Calendar, Clock, MapPin, User, CheckSquare, Square, 
   Copy, Check, Share2, Printer, Edit3, BookOpen, Music, 
-  Monitor, Mic, Coffee, HeartHandshake, Shield, ExternalLink, Navigation 
+  Monitor, Mic, Coffee, HeartHandshake, Shield, ExternalLink, Navigation,
+  Lock, Unlock, Key, Users, List, LayoutGrid
 } from './Icons';
 
 export default function ActivityDetailModal({ 
   activity, 
   onClose, 
   onEditActivity,
-  onUpdateActivity 
+  onUpdateActivity,
+  isAdminAuthenticated,
+  lockedMessage,
+  onRequireAuth,
+  onToggleActivityLock
 }) {
-  const [activeTab, setActiveTab] = useState('program'); // 'program' | 'servers'
-  const [copiedWhatsApp, setCopiedWhatsApp] = useState(false);
+  const isProgramLocked = Boolean(activity?.isProgramLocked);
+  const isSpecificProgramLocked = isProgramLocked && !isAdminAuthenticated;
+  const [activeTab, setActiveTab] = useState(() => isSpecificProgramLocked ? 'servers' : 'program');
+  const [serversViewMode, setServersViewMode] = useState('list'); // 'list' | 'cards'
   const [localProgram, setLocalProgram] = useState(activity?.program || []);
 
   useEffect(() => {
     setLocalProgram(activity?.program || []);
   }, [activity]);
+
+  // Adjust active tab if lock state changes or if a locked activity is opened
+  useEffect(() => {
+    if (isSpecificProgramLocked) {
+      setActiveTab('servers');
+    }
+  }, [activity?.id, isSpecificProgramLocked]);
 
   // Lock body scrolling while modal is open
   useEffect(() => {
@@ -46,8 +60,20 @@ export default function ActivityDetailModal({
 
   if (!activity) return null;
 
-  // Toggle checklist item in the program
-  const toggleStepCompleted = (index) => {
+  // Toggle checklist item in the program - Only Admin can check/uncheck
+  const toggleStepCompleted = (index, bypassAuth = false) => {
+    if (!isAdminAuthenticated && !bypassAuth) {
+      if (onRequireAuth) {
+        onRequireAuth(() => {
+          toggleStepCompleted(index, true);
+        }, {
+          title: 'Marcar Progreso del Programa',
+          description: 'Solo los administradores pueden tachar o actualizar el progreso del programa. Introduce la contraseña administrativa.'
+        });
+      }
+      return;
+    }
+
     const updated = localProgram.map((step, idx) => {
       if (idx === index) {
         return { ...step, completed: !step.completed };
@@ -65,54 +91,11 @@ export default function ActivityDetailModal({
     ? Math.round((completedCount / localProgram.length) * 100) 
     : 0;
 
-  // Generate formatted WhatsApp text for the service
-  const generateWhatsAppMessage = () => {
-    const isJpc = activity.group === 'jotapece';
-    const isSiervos = activity.group === 'siervos';
-    const groupName = isJpc ? 'JOTAPECE (JPC)' : isSiervos ? 'SIERVOS (121)' : 'YOUNGERS ICC';
-
-    let text = `🔥 *${groupName} · ORDEN DE SERVICIO & RESPONSABILIDADES* 🔥\n`;
-    text += `📅 *Fecha:* ${activity.dayOfWeek} ${activity.dayNumber} de ${activity.month} de ${activity.year}\n`;
-    text += `📖 *Tema / Mensaje:* ${activity.title}\n`;
-    if (activity.preacher) text += `🎙️ *Predicador:* ${activity.preacher}\n`;
-    if (activity.isCustomLocation || activity.locationType === 'fuera') {
-      text += `📍 *Lugar (Fuera de lo establecido):* ${activity.customLocationName || activity.location}\n`;
-      if (activity.customLocationAddress) text += `🗺️ *Dirección:* ${activity.customLocationAddress}\n`;
-      if (activity.customLocationNotes) text += `🚗 *Punto de encuentro / Transporte:* ${activity.customLocationNotes}\n`;
-      if (activity.customLocationMapUrl) text += `🌐 *GPS / Google Maps:* ${activity.customLocationMapUrl}\n`;
-    } else {
-      text += `📍 *Lugar:* ${activity.location}\n`;
-    }
-    if (activity.prepTime) text += `⏰ *Montaje / Preparación:* ${activity.prepTime}\n`;
-    if (activity.activityTime) text += `⏰ *Culto / Actividad:* ${activity.activityTime}\n`;
-    if (activity.teardownTime) text += `⏰ *Desmontaje:* ${activity.teardownTime}\n\n`;
-
-    text += `━━━━━━━━━━━━━━━━━━━━━\n`;
-    text += `📋 *PROGRAMA MINUTO A MINUTO:*\n`;
-    localProgram.forEach((p, idx) => {
-      text += `• *${p.time}* - ${p.title} _(Resp: ${p.responsible})_\n`;
-    });
-
-    text += `\n━━━━━━━━━━━━━━━━━━━━━\n`;
-    text += `👥 *SERVIDORES Y RESPONSABILIDADES:*\n`;
-    (activity.serverAssignments || []).forEach(s => {
-      text += `▫️ *${s.role}:* ${s.serverName} [${s.status}]\n   👉 ${s.duties}\n`;
-    });
-
-    text += `\n¡Oremos y sirvamos con excelencia para la gloria del Señor! 🙌✨\n`;
-    text += `_Youngers ICC · Iglesia Convertidos a Cristo_`;
-
-    return text;
-  };
-
-  const handleCopyWhatsApp = () => {
-    const message = generateWhatsAppMessage();
-    navigator.clipboard.writeText(message);
-    setCopiedWhatsApp(true);
-    setTimeout(() => setCopiedWhatsApp(false), 3000);
-  };
-
   const handlePrint = () => {
+    if (isProgramLocked && !isAdminAuthenticated) {
+      alert('La impresión no está disponible porque el programa de esta actividad está bloqueado en preparación.');
+      return;
+    }
     window.print();
   };
 
@@ -134,21 +117,22 @@ export default function ActivityDetailModal({
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div 
-        className={`modal-container print-sheet ${isJpc ? 'modal-theme-jpc' : isSiervos ? 'modal-theme-siervos' : 'modal-theme-ambos'}`}
+        className={`modal-container print-sheet ${isProgramLocked ? 'is-program-locked' : ''} ${isJpc ? 'modal-theme-jpc' : isSiervos ? 'modal-theme-siervos' : 'modal-theme-ambos'}`}
         onClick={e => e.stopPropagation()}
       >
         {/* Modal Top Header */}
         <div className="modal-header">
           <div className="modal-meta-top">
             <span className={`modal-group-badge ${isJpc ? 'badge-jpc' : isSiervos ? 'badge-siervos' : 'badge-ambos'}`}>
-              {isJpc ? 'Jotapece (Adolescentes 12–17)' : isSiervos ? 'Siervos (Jóvenes 18+)' : 'Siervos y Jotapece (Ambos)'}
+              <span className="desktop-inline">{isJpc ? 'Jotapece (Adolescentes 12–17)' : isSiervos ? 'Siervos (Jóvenes 18+)' : 'Siervos y Jotapece (Ambos)'}</span>
+              <span className="mobile-inline">{isJpc ? 'Jotapece (12–17)' : isSiervos ? 'Siervos (18+)' : 'Ambos'}</span>
             </span>
             <span className="modal-date-pill">
-              <Calendar size={14} />
+              <Calendar size={13} />
               <span>{activity.dayOfWeek} {activity.dayNumber} {activity.month} {activity.year}</span>
             </span>
             <span className={`modal-location-pill tag-${activity.locationType}`}>
-              <MapPin size={14} />
+              <MapPin size={13} />
               <span>{activity.location}</span>
             </span>
           </div>
@@ -160,18 +144,12 @@ export default function ActivityDetailModal({
             </button>
           </div>
 
-          {/* Quick info row */}
+          {/* Quick info row (Montaje/Desmontaje hidden on mobile to drastically reduce header height) */}
           <div className="modal-quick-info-grid">
             {activity.preacher && (
               <div className="quick-info-card">
                 <span className="q-label">Predicador / Mensaje</span>
                 <strong className="q-val text-primary">{activity.preacher}</strong>
-              </div>
-            )}
-            {activity.prepTime && (
-              <div className="quick-info-card">
-                <span className="q-label">Montaje / Preparación</span>
-                <strong className="q-val">{activity.prepTime}</strong>
               </div>
             )}
             {activity.activityTime && (
@@ -180,13 +158,27 @@ export default function ActivityDetailModal({
                 <strong className="q-val highlight">{activity.activityTime}</strong>
               </div>
             )}
+            {activity.prepTime && (
+              <div className="quick-info-card desktop-quick-info">
+                <span className="q-label">Montaje / Preparación</span>
+                <strong className="q-val">{activity.prepTime}</strong>
+              </div>
+            )}
             {activity.teardownTime && (
-              <div className="quick-info-card">
+              <div className="quick-info-card desktop-quick-info">
                 <span className="q-label">Desmontaje</span>
                 <strong className="q-val">{activity.teardownTime}</strong>
               </div>
             )}
           </div>
+
+          {/* Micro line on mobile for prep & teardown times */}
+          {(activity.prepTime || activity.teardownTime) && (
+            <div className="mobile-prep-summary mobile-inline">
+              <Clock size={12} />
+              <span>Montaje: {activity.prepTime || '-'} · Desmontaje: {activity.teardownTime || '-'}</span>
+            </div>
+          )}
 
           {/* Apartado Especial: Ubicación Fuera de lo Establecido */}
           {(activity.isCustomLocation || activity.locationType === 'fuera' || activity.customLocationAddress) && (
@@ -194,7 +186,7 @@ export default function ActivityDetailModal({
               <div className="outside-card-top-row">
                 <div className="outside-badge-flex">
                   <span className="outside-pulse-dot"></span>
-                  <MapPin size={16} />
+                  <MapPin size={15} />
                   <strong>Ubicación Fuera de lo Establecido</strong>
                 </div>
                 {activity.customLocationMapUrl && (
@@ -219,13 +211,13 @@ export default function ActivityDetailModal({
                 </div>
                 {activity.customLocationAddress && (
                   <div className="outside-info-cell">
-                    <span className="cell-label">Dirección física / Referencia:</span>
+                    <span className="cell-label">Dirección física:</span>
                     <span className="cell-value">{activity.customLocationAddress}</span>
                   </div>
                 )}
                 {activity.customLocationNotes && (
                   <div className="outside-info-cell full-span">
-                    <span className="cell-label">Punto de Encuentro / Transporte:</span>
+                    <span className="cell-label">Punto de Encuentro:</span>
                     <span className="cell-value text-accent-bold">{activity.customLocationNotes}</span>
                   </div>
                 )}
@@ -237,12 +229,21 @@ export default function ActivityDetailModal({
           <div className="modal-toolbar">
             <div className="modal-tabs-group">
               <button 
-                className={`modal-tab-btn ${activeTab === 'program' ? 'active' : ''}`}
+                className={`modal-tab-btn ${activeTab === 'program' ? 'active' : ''} ${isProgramLocked ? 'tab-locked-warning' : ''}`}
                 onClick={() => setActiveTab('program')}
               >
-                <span>Programa ({localProgram.length})</span>
-                {localProgram.length > 0 && (
-                  <span className="tab-progress-tag">{progressPercent}%</span>
+                {isProgramLocked ? (
+                  <>
+                    <Lock size={13} style={{ marginRight: 5, verticalAlign: 'middle' }} />
+                    <span>Programa (Bloqueado)</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Programa ({localProgram.length})</span>
+                    {localProgram.length > 0 && (
+                      <span className="tab-progress-tag">{progressPercent}%</span>
+                    )}
+                  </>
                 )}
               </button>
               <button 
@@ -255,26 +256,51 @@ export default function ActivityDetailModal({
             </div>
 
             <div className="modal-actions-right">
-              <button 
-                className={`btn btn-whatsapp ${copiedWhatsApp ? 'btn-copied' : ''}`}
-                onClick={handleCopyWhatsApp}
-                title="Copiar resumen formateado para WhatsApp"
-              >
-                {copiedWhatsApp ? <Check size={16} /> : <Share2 size={16} />}
-                <span className="desktop-inline">{copiedWhatsApp ? '¡Copiado para WhatsApp!' : 'Copiar para WhatsApp'}</span>
-                <span className="mobile-inline">{copiedWhatsApp ? '¡Copiado!' : 'WhatsApp'}</span>
-              </button>
+              {/* Per-Activity Lock Button for Admins */}
+              {isAdminAuthenticated && onToggleActivityLock && (
+                <button 
+                  type="button"
+                  className={`btn btn-print-hide btn-act-lock ${activity.isProgramLocked ? 'is-act-locked' : 'is-act-unlocked'}`}
+                  onClick={() => onToggleActivityLock(activity.id)}
+                  title={activity.isProgramLocked 
+                    ? "El programa de esta actividad está bloqueado al público. Pulsa para desbloquearlo." 
+                    : "Pulsa para bloquear el programa de esta actividad (los visitantes solo verán los servidores)."}
+                >
+                  {activity.isProgramLocked ? <Lock size={15} /> : <Unlock size={15} />}
+                  <span className="desktop-btn-label">
+                    {activity.isProgramLocked ? 'Desbloquear Programa' : 'Bloquear Programa'}
+                  </span>
+                  <span className="mobile-btn-label">
+                    {activity.isProgramLocked ? 'Desbloquear' : 'Bloquear'}
+                  </span>
+                </button>
+              )}
 
-              <button 
-                className="btn btn-secondary btn-print-hide"
-                onClick={handlePrint}
-                title="Imprimir hoja de servicio"
-              >
-                <Printer size={16} />
-                <span>Imprimir</span>
-              </button>
+              {/* Print Button: Disabled if program is locked */}
+              {isProgramLocked ? (
+                <button 
+                  type="button"
+                  className="btn btn-secondary btn-print-hide btn-print-locked"
+                  disabled
+                  title="La impresión está deshabilitada porque el programa de esta actividad está bloqueado en preparación."
+                >
+                  <Lock size={15} />
+                  <span className="desktop-inline">Impresión Bloqueada</span>
+                  <span className="mobile-inline">Bloqueado</span>
+                </button>
+              ) : (
+                <button 
+                  type="button"
+                  className="btn btn-secondary btn-print-hide"
+                  onClick={handlePrint}
+                  title="Imprimir hoja de servicio"
+                >
+                  <Printer size={16} />
+                  <span className="desktop-inline">Imprimir</span>
+                </button>
+              )}
 
-              {onEditActivity && (
+              {onEditActivity && isAdminAuthenticated && (
                 <button 
                   className="btn btn-secondary btn-print-hide"
                   onClick={() => {
@@ -284,7 +310,7 @@ export default function ActivityDetailModal({
                   title="Modificar en panel de administrador"
                 >
                   <Edit3 size={16} />
-                  <span>Modificar</span>
+                  <span className="desktop-inline">Modificar</span>
                 </button>
               )}
             </div>
@@ -295,7 +321,60 @@ export default function ActivityDetailModal({
         <div className="modal-body">
           {/* TAB 1: PROGRAM / ORDEN DE CULTO */}
           {activeTab === 'program' && (
+            isSpecificProgramLocked ? (
+              <div className="tab-content">
+                <div className="activity-program-locked-card">
+                  <div className="locked-icon-badge">
+                    <Lock size={34} />
+                  </div>
+                  <h3 className="locked-card-title">Programa Minuto a Minuto en Preparación</h3>
+                  <p className="locked-card-desc">
+                    {lockedMessage || 'El cronograma y orden de culto para esta actividad se encuentra actualmente en preparación y no está listo para el público general. Puedes consultar la asignación de servidores y roles en la pestaña contigua.'}
+                  </p>
+                  <div className="locked-card-actions">
+                    <button 
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() => setActiveTab('servers')}
+                    >
+                      <Users size={16} />
+                      <span>Ver Servidores Asignados</span>
+                    </button>
+                    {onRequireAuth && (
+                      <button 
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => {
+                          onRequireAuth(() => {
+                            // After login, modal re-renders with full admin access
+                          }, {
+                            title: 'Desbloquear Programa',
+                            description: 'Introduce la clave de administración para acceder al programa minuto a minuto.'
+                          });
+                        }}
+                      >
+                        <Key size={16} />
+                        <span>Acceder como Administrador</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
             <div className="tab-content program-tab-content">
+              {/* Admin Notice Banner if activity is locked */}
+              {isAdminAuthenticated && isProgramLocked && (
+                <div className="admin-locked-notice-banner">
+                  <div className="admin-locked-notice-icon">
+                    <Lock size={18} />
+                  </div>
+                  <div className="admin-locked-notice-text">
+                    <strong>Programa Bloqueado al Público General</strong>
+                    <p>Este programa está en preparación por liderazgo. Los visitantes regulares tienen el acceso bloqueado y no pueden verlo ni imprimirlo. Pulsa "Desbloquear Programa" arriba cuando esté listo para publicarlo.</p>
+                  </div>
+                </div>
+              )}
+
               {/* Progress bar */}
               <div className="program-progress-card">
                 <div className="progress-info-row">
@@ -309,7 +388,14 @@ export default function ActivityDetailModal({
                   ></div>
                 </div>
                 <span className="progress-hint">
-                  Puedes hacer clic en la casilla de cada paso para marcarlo como listo durante la reunión.
+                  {isAdminAuthenticated ? (
+                    'Puedes hacer clic en la casilla de cada paso para marcarlo como listo durante la reunión.'
+                  ) : (
+                    <span>
+                      <Lock size={12} style={{ display: 'inline', verticalAlign: '-1px', marginRight: '5px' }} />
+                      Solo el administrador puede tachar el progreso de este programa.
+                    </span>
+                  )}
                 </span>
               </div>
 
@@ -322,15 +408,21 @@ export default function ActivityDetailModal({
                   {localProgram.map((step, idx) => (
                     <div 
                       key={idx} 
-                      className={`program-step-card ${step.completed ? 'is-completed' : ''}`}
-                      onClick={() => toggleStepCompleted(idx)}
+                      className={`program-step-card ${step.completed ? 'is-completed' : ''} ${!isAdminAuthenticated ? 'read-only' : ''}`}
+                      onClick={isAdminAuthenticated ? () => toggleStepCompleted(idx) : undefined}
                     >
                       <button 
-                        className="step-check-btn"
+                        type="button"
+                        className={`step-check-btn ${!isAdminAuthenticated ? 'is-locked-btn' : ''}`}
                         onClick={(e) => {
                           e.stopPropagation();
                           toggleStepCompleted(idx);
                         }}
+                        title={
+                          isAdminAuthenticated
+                            ? (step.completed ? 'Marcar como pendiente' : 'Marcar como completado')
+                            : 'Solo el administrador puede tachar este paso (clic para autenticarte)'
+                        }
                       >
                         {step.completed ? (
                           <CheckSquare size={22} className="check-done" />
@@ -359,23 +451,78 @@ export default function ActivityDetailModal({
                 </div>
               )}
             </div>
+            )
           )}
 
           {/* TAB 2: SERVIDORES & RESPONSABILIDADES */}
           {activeTab === 'servers' && (
             <div className="tab-content servers-tab-content">
-              <div className="servers-intro-banner">
-                <Shield size={18} />
-                <span>
-                  Equipo de líderes y servidores designados para esta fecha. Cada rol tiene su responsabilidad específica definida.
-                </span>
+              <div className="servers-tab-header-flex">
+                <div className="servers-intro-banner">
+                  <Shield size={18} />
+                  <span>
+                    Equipo de líderes y servidores asignados ({activity.serverAssignments?.length || 0}).
+                  </span>
+                </div>
+
+                {activity.serverAssignments && activity.serverAssignments.length > 0 && (
+                  <div className="view-toggle-pills" role="group" aria-label="Modo de visualización de servidores">
+                    <button 
+                      type="button"
+                      className={`view-toggle-btn ${serversViewMode === 'list' ? 'active' : ''}`}
+                      onClick={() => setServersViewMode('list')}
+                      title="Vista compacta en lista"
+                    >
+                      <List size={14} />
+                      <span>Lista</span>
+                    </button>
+                    <button 
+                      type="button"
+                      className={`view-toggle-btn ${serversViewMode === 'cards' ? 'active' : ''}`}
+                      onClick={() => setServersViewMode('cards')}
+                      title="Vista en tarjetas"
+                    >
+                      <LayoutGrid size={14} />
+                      <span>Tarjetas</span>
+                    </button>
+                  </div>
+                )}
               </div>
 
               {(!activity.serverAssignments || activity.serverAssignments.length === 0) ? (
                 <div className="empty-sub-state">
                   <p>No hay servidores asignados para esta fecha o es una actividad sin reunión.</p>
                 </div>
+              ) : serversViewMode === 'list' ? (
+                /* Compact List View */
+                <div className="compact-servers-list">
+                  {activity.serverAssignments.map((assignment, idx) => (
+                    <div key={idx} className="compact-server-card">
+                      <div className="compact-server-main">
+                        <div className="compact-role-icon-box">
+                          {getRoleIcon(assignment.role)}
+                        </div>
+                        <div className="compact-server-names">
+                          <strong className="compact-server-person">{assignment.serverName}</strong>
+                          <span className="compact-server-role">{assignment.role}</span>
+                        </div>
+                      </div>
+
+                      <div className="compact-server-right">
+                        {assignment.duties && (
+                          <span className="compact-server-duty" title={assignment.duties}>
+                            {assignment.duties}
+                          </span>
+                        )}
+                        <span className={`status-pill status-pill-sm ${assignment.status === 'Confirmado' ? 'status-confirmed' : 'status-pending'}`}>
+                          {assignment.status}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               ) : (
+                /* Detailed Cards Grid */
                 <div className="servers-grid">
                   {activity.serverAssignments.map((assignment, idx) => (
                     <div key={idx} className="assignment-card">
@@ -400,19 +547,6 @@ export default function ActivityDetailModal({
                         <span className="duties-label">Responsabilidad específica:</span>
                         <p className="duties-text">{assignment.duties}</p>
                       </div>
-
-                      <button 
-                        className="btn-share-single-duty"
-                        onClick={() => {
-                          const singleMsg = `Hola ${assignment.serverName} 👋, para el servicio de *${activity.title}* (${activity.dayOfWeek} ${activity.dayNumber} ${activity.month}), tienes asignado el rol de *${assignment.role}*.\n\n📌 *Tu responsabilidad:* ${assignment.duties}\n\n¡Gracias por tu fidelidad y servicio al Señor! 🙌`;
-                          navigator.clipboard.writeText(singleMsg);
-                          alert(`¡Mensaje para ${assignment.serverName} copiado al portapapeles!`);
-                        }}
-                        title="Copiar mensaje directo para este servidor"
-                      >
-                        <Copy size={14} />
-                        <span>Copiar encargo para WhatsApp</span>
-                      </button>
                     </div>
                   ))}
                 </div>
