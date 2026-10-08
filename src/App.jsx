@@ -347,24 +347,60 @@ export default function App() {
     });
   };
 
-  // Server management -> LocalStorage
-  const handleAddServer = (newServer) => {
+  // Server management -> LocalStorage + Auto-Sync to Google Sheets
+  const handleAddServer = async (newServer) => {
     const nextServers = [...servers, newServer];
     setServers(nextServers);
     saveStoredServers(nextServers);
+    try {
+      await syncToGoogleSheets(activities, nextServers, {
+        announcements,
+        isProgramLocked,
+        lockedMessage,
+        rolesCatalog,
+        hoursCatalog,
+        serviceAreasCatalog
+      });
+    } catch (e) {
+      console.warn('Auto-sync add server to sheets error:', e);
+    }
   };
 
-  const handleUpdateServer = (updatedServer) => {
+  const handleUpdateServer = async (updatedServer) => {
     const nextServers = servers.map(s => s.id === updatedServer.id ? updatedServer : s);
     setServers(nextServers);
     saveStoredServers(nextServers);
+    try {
+      await syncToGoogleSheets(activities, nextServers, {
+        announcements,
+        isProgramLocked,
+        lockedMessage,
+        rolesCatalog,
+        hoursCatalog,
+        serviceAreasCatalog
+      });
+    } catch (e) {
+      console.warn('Auto-sync update server to sheets error:', e);
+    }
   };
 
   const handleDeleteServer = (serverId) => {
-    requireModificationAuth(() => {
+    requireModificationAuth(async () => {
       const nextServers = servers.filter(s => s.id !== serverId);
       setServers(nextServers);
       saveStoredServers(nextServers);
+      try {
+        await syncToGoogleSheets(activities, nextServers, {
+          announcements,
+          isProgramLocked,
+          lockedMessage,
+          rolesCatalog,
+          hoursCatalog,
+          serviceAreasCatalog
+        });
+      } catch (e) {
+        console.warn('Auto-sync delete server to sheets error:', e);
+      }
     }, {
       title: 'Eliminar Servidor',
       description: 'Introduce la contraseña administrativa para autorizar la eliminación de este servidor.'

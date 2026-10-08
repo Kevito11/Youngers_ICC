@@ -144,6 +144,22 @@ export const PROGRAM_BLOCKS_CATALOG = [
 // 5. Catálogo de Roles de Servidores con Descripciones / Responsabilidades
 export const DEFAULT_SERVER_ROLES = [
   {
+    role: 'Pastor de Jóvenes / Líder General',
+    duties: 'Liderazgo pastoral general, visión, predicación y pastoreo de los jóvenes de la iglesia.'
+  },
+  {
+    role: 'Líder de Jóvenes / Maestro',
+    duties: 'Enseñanza bíblica, mentoría, dirección de células y apoyo logístico.'
+  },
+  {
+    role: 'Líder Jotapece (JPC)',
+    duties: 'Pastoreo, discipulado y coordinación del ministerio de adolescentes y jóvenes (12–17 años).'
+  },
+  {
+    role: 'Líder Siervos (121)',
+    duties: 'Pastoreo, discipulado y coordinación del grupo de jóvenes universitarios y solteros (18+).'
+  },
+  {
     role: 'Coordinador del Servicio',
     duties: 'Coordinar la apertura, transiciones y desarrollo general de la logística del culto.'
   },
@@ -152,40 +168,36 @@ export const DEFAULT_SERVER_ROLES = [
     duties: 'Exposición bíblica de las Sagradas Escrituras y ministración de los jóvenes.'
   },
   {
+    role: 'Coordinadora de Alabanza',
+    duties: 'Planificación de repertorios devocionales, dirección vocal y coordinación de ensayos musicales.'
+  },
+  {
     role: 'Dirección de Alabanza',
     duties: 'Guiar el tiempo congregacional devocional de alabanza y adoración al Señor.'
   },
   {
-    role: 'Voz y Coros',
-    duties: 'Apoyo vocal armónico en el equipo de alabanza.'
+    role: 'Alabanza / Voz',
+    duties: 'Voz principal o apoyo armónico vocal en el equipo de adoración.'
   },
   {
-    role: 'Guitarra Acústica / Eléctrica',
-    duties: 'Ejecución instrumental de cuerdas y acordes del repertorio de cantos.'
+    role: 'Alabanza / Músico Instrumental',
+    duties: 'Ejecución de instrumentos (piano, bajo, batería, guitarra) en el tiempo de alabanza.'
   },
   {
-    role: 'Bajo Eléctrico',
-    duties: 'Base armónica y rítmica en el equipo de música.'
-  },
-  {
-    role: 'Batería / Percusión',
-    duties: 'Marcación de tempo y dinámica rítmica de los cantos.'
-  },
-  {
-    role: 'Piano / Teclado',
-    duties: 'Acompañamiento armónico y ambiental durante la adoración.'
+    role: 'Líder Técnico Audiovisual',
+    duties: 'Supervisión integral de audio FOH, multimedia, monitores y transmisiones en vivo.'
   },
   {
     role: 'Sonido y Audio FOH',
-    duties: 'Ecualización, calibración de micrófonos, niveles de monitoreo y sala principal.'
+    duties: 'Ecualización, calibración de micrófonos, niveles de monitoreo y acústica de la sala principal.'
   },
   {
     role: 'Multimedia y Proyección',
     duties: 'Proyección puntual de letras de cantos, citas bíblicas, diapositivas y avisos.'
   },
   {
-    role: 'Transmisión / Cámaras',
-    duties: 'Operación de cámaras y monitoreo de la señal en vivo.'
+    role: 'Transmisión / Redes',
+    duties: 'Operación de cámaras, streaming en vivo y cobertura digital de la reunión.'
   },
   {
     role: 'Recepción y Bienvenida',
@@ -196,7 +208,7 @@ export const DEFAULT_SERVER_ROLES = [
     duties: 'Toma de asistencia y recopilación de datos de nuevos contactos.'
   },
   {
-    role: 'Dinámica y Rompehielos',
+    role: 'Dinámicas y Rompehielos',
     duties: 'Conducir el juego de integración inicial de forma ordenada y entretenida.'
   },
   {
@@ -212,8 +224,8 @@ export const DEFAULT_SERVER_ROLES = [
     duties: 'Recogida de instrumentos, cables, limpieza y cierre de instalaciones.'
   },
   {
-    role: 'Apoyo General',
-    duties: 'Disponibilidad para cualquier apoyo logístico requerido durante el culto.'
+    role: 'Servidor de Apoyo General',
+    duties: 'Disponibilidad para cualquier apoyo logístico o ministerial requerido durante el culto.'
   }
 ];
 

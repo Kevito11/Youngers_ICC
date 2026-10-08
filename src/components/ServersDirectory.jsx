@@ -6,29 +6,6 @@ import {
 import UnsavedChangesModal from './UnsavedChangesModal';
 import { loadStoredRoles, loadStoredServiceAreas } from '../data/catalogs';
 
-const BASE_DIRECTORY_ROLES = [
-  'Pastor de Jóvenes / Líder General',
-  'Líder de Jóvenes / Maestro',
-  'Líder Jotapece (JPC)',
-  'Líder Siervos (121)',
-  'Coordinador del Servicio',
-  'Predicador / Mensaje',
-  'Coordinadora de Alabanza',
-  'Alabanza / Voz',
-  'Alabanza / Músico Instrumental',
-  'Líder Técnico Audiovisual',
-  'Sonido y Audio FOH',
-  'Multimedia y Proyección',
-  'Transmisión / Redes',
-  'Recepción y Bienvenida',
-  'Registro y Asistencia',
-  'Dinámicas y Rompehielos',
-  'Refrigerio y Hospitalidad',
-  'Logística y Montaje',
-  'Desmontaje y Cierre',
-  'Servidor de Apoyo General'
-];
-
 export default function ServersDirectory({ 
   servers, 
   activities,
@@ -63,12 +40,11 @@ export default function ServersDirectory({
   const [customAreaInput, setCustomAreaInput] = useState('');
   const [isAreasExpanded, setIsAreasExpanded] = useState(false);
 
-  // Dynamically consolidate all available roles for the select list
+  // Consolidar dinámicamente los roles disponibles desde el catálogo sincronizado con Google Sheets
   const storedRoles = (rolesCatalog && rolesCatalog.length > 0) ? rolesCatalog : (loadStoredRoles() || []);
   const storedRoleNames = storedRoles.map(r => r.role).filter(Boolean);
   const existingServerRoles = (servers || []).map(s => s.role).filter(Boolean);
   const allAvailableRoles = Array.from(new Set([
-    ...BASE_DIRECTORY_ROLES,
     ...storedRoleNames,
     ...existingServerRoles
   ])).filter(Boolean);
