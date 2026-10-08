@@ -11,6 +11,8 @@ export default function ServersDirectory({
   activities,
   serviceAreasCatalog,
   rolesCatalog,
+  onUpdateRolesCatalog,
+  onUpdateServiceAreasCatalog,
   onAddServer, 
   onUpdateServer, 
   onDeleteServer,
@@ -219,6 +221,29 @@ export default function ServersDirectory({
     const areasArray = Array.isArray(formData.primaryAreas)
       ? formData.primaryAreas
       : (formData.primaryAreas || '').split(',').map(s => s.trim()).filter(Boolean);
+
+    // Auto-registrar el rol en el catálogo oficial si es nuevo o personalizado
+    if (effectiveRole && !storedRoleNames.some(r => r.toLowerCase() === effectiveRole.toLowerCase())) {
+      const newRoleObj = {
+        role: effectiveRole,
+        duties: 'Responsabilidad y función ministerial personalizada.'
+      };
+      if (onUpdateRolesCatalog) {
+        onUpdateRolesCatalog([...storedRoles, newRoleObj]);
+      }
+    }
+
+    // Auto-registrar áreas nuevas en el catálogo oficial de áreas
+    const newAreasToAdd = areasArray.filter(
+      areaName => !storedAreaNames.some(existing => existing.toLowerCase() === areaName.toLowerCase())
+    );
+    if (newAreasToAdd.length > 0 && onUpdateServiceAreasCatalog) {
+      const updatedAreasList = [
+        ...storedAreas,
+        ...newAreasToAdd.map(name => ({ name, description: 'Área de servicio ministerial.' }))
+      ];
+      onUpdateServiceAreasCatalog(updatedAreasList);
+    }
 
     if (isCreating) {
       const newServer = {

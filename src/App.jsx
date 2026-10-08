@@ -157,17 +157,103 @@ export default function App() {
   const handleUpdateRolesCatalog = (next) => {
     setRolesCatalog(next);
     saveStoredRoles(next);
+    syncToGoogleSheets(activities, servers, {
+      announcements,
+      isProgramLocked,
+      lockedMessage,
+      rolesCatalog: next,
+      hoursCatalog,
+      serviceAreasCatalog
+    }).catch(e => console.warn('Sync roles to sheets warning:', e));
   };
 
   const handleUpdateHoursCatalog = (next) => {
     setHoursCatalog(next);
     saveStoredHours(next);
+    syncToGoogleSheets(activities, servers, {
+      announcements,
+      isProgramLocked,
+      lockedMessage,
+      rolesCatalog,
+      hoursCatalog: next,
+      serviceAreasCatalog
+    }).catch(e => console.warn('Sync hours to sheets warning:', e));
   };
 
   const handleUpdateServiceAreasCatalog = (next) => {
     setServiceAreasCatalog(next);
     saveStoredServiceAreas(next);
+    syncToGoogleSheets(activities, servers, {
+      announcements,
+      isProgramLocked,
+      lockedMessage,
+      rolesCatalog,
+      hoursCatalog,
+      serviceAreasCatalog: next
+    }).catch(e => console.warn('Sync areas to sheets warning:', e));
   };
+
+  // Auto-descubrir y sincronizar cualquier rol o área personalizada existente en los servidores hacia los catálogos
+  useEffect(() => {
+    if (!servers || servers.length === 0 || !rolesCatalog || rolesCatalog.length === 0) return;
+
+    let nextRoles = [...rolesCatalog];
+    let rolesChanged = false;
+
+    servers.forEach(s => {
+      if (s.role && s.role.trim()) {
+        const roleName = s.role.trim();
+        const exists = nextRoles.some(r => r.role?.toLowerCase() === roleName.toLowerCase());
+        if (!exists) {
+          nextRoles.push({
+            role: roleName,
+            duties: 'Responsabilidad y función ministerial personalizada.'
+          });
+          rolesChanged = true;
+        }
+      }
+    });
+
+    let nextAreas = [...serviceAreasCatalog];
+    let areasChanged = false;
+
+    servers.forEach(s => {
+      const areas = Array.isArray(s.primaryAreas) 
+        ? s.primaryAreas 
+        : (typeof s.primaryAreas === 'string' ? s.primaryAreas.split(',').map(a => a.trim()).filter(Boolean) : []);
+      areas.forEach(a => {
+        if (!a || !a.trim()) return;
+        const areaName = a.trim();
+        const exists = nextAreas.some(existing => (typeof existing === 'string' ? existing : existing.name)?.toLowerCase() === areaName.toLowerCase());
+        if (!exists) {
+          nextAreas.push({ name: areaName, description: 'Área de servicio ministerial.' });
+          areasChanged = true;
+        }
+      });
+    });
+
+    if (rolesChanged || areasChanged) {
+      if (rolesChanged) {
+        setRolesCatalog(nextRoles);
+        saveStoredRoles(nextRoles);
+      }
+      if (areasChanged) {
+        setServiceAreasCatalog(nextAreas);
+        saveStoredServiceAreas(nextAreas);
+      }
+      // Solo sincronizar con Google Sheets si es una sesión de administrador autenticada
+      if (isAdminAuthenticated) {
+        syncToGoogleSheets(activities, servers, {
+          announcements,
+          isProgramLocked,
+          lockedMessage,
+          rolesCatalog: rolesChanged ? nextRoles : rolesCatalog,
+          hoursCatalog,
+          serviceAreasCatalog: areasChanged ? nextAreas : serviceAreasCatalog
+        }).catch(e => console.warn('Sync auto-discovered roles/areas warning:', e));
+      }
+    }
+  }, [servers, rolesCatalog, serviceAreasCatalog, isAdminAuthenticated]);
 
   // Renombrado en cascada para roles
   const handleCascadeRenameRole = (oldRole, newRole) => {
@@ -349,6 +435,22 @@ export default function App() {
 
   // Server management -> LocalStorage + Auto-Sync to Google Sheets
   const handleAddServer = async (newServer) => {
+    let nextRoles = rolesCatalog;
+    if (newServer.role && newServer.role.trim() && !rolesCatalog.some(r => r.role?.toLowerCase() === newServer.role.trim().toLowerCase())) {
+      nextRoles = [...rolesCatalog, { role: newServer.role.trim(), duties: 'Responsabilidad y función ministerial personalizada.' }];
+      setRolesCatalog(nextRoles);
+      saveStoredRoles(nextRoles);
+    }
+
+    let nextAreas = serviceAreasCatalog;
+    const areas = Array.isArray(newServer.primaryAreas) ? newServer.primaryAreas : [];
+    const missingAreas = areas.filter(a => a && !nextAreas.some(existing => (typeof existing === 'string' ? existing : existing.name)?.toLowerCase() === a.trim().toLowerCase()));
+    if (missingAreas.length > 0) {
+      nextAreas = [...nextAreas, ...missingAreas.map(a => ({ name: a.trim(), description: 'Área de servicio ministerial.' }))];
+      setServiceAreasCatalog(nextAreas);
+      saveStoredServiceAreas(nextAreas);
+    }
+
     const nextServers = [...servers, newServer];
     setServers(nextServers);
     saveStoredServers(nextServers);
@@ -357,9 +459,9 @@ export default function App() {
         announcements,
         isProgramLocked,
         lockedMessage,
-        rolesCatalog,
+        rolesCatalog: nextRoles,
         hoursCatalog,
-        serviceAreasCatalog
+        serviceAreasCatalog: nextAreas
       });
     } catch (e) {
       console.warn('Auto-sync add server to sheets error:', e);
@@ -367,6 +469,22 @@ export default function App() {
   };
 
   const handleUpdateServer = async (updatedServer) => {
+    let nextRoles = rolesCatalog;
+    if (updatedServer.role && updatedServer.role.trim() && !rolesCatalog.some(r => r.role?.toLowerCase() === updatedServer.role.trim().toLowerCase())) {
+      nextRoles = [...rolesCatalog, { role: updatedServer.role.trim(), duties: 'Responsabilidad y función ministerial personalizada.' }];
+      setRolesCatalog(nextRoles);
+      saveStoredRoles(nextRoles);
+    }
+
+    let nextAreas = serviceAreasCatalog;
+    const areas = Array.isArray(updatedServer.primaryAreas) ? updatedServer.primaryAreas : [];
+    const missingAreas = areas.filter(a => a && !nextAreas.some(existing => (typeof existing === 'string' ? existing : existing.name)?.toLowerCase() === a.trim().toLowerCase()));
+    if (missingAreas.length > 0) {
+      nextAreas = [...nextAreas, ...missingAreas.map(a => ({ name: a.trim(), description: 'Área de servicio ministerial.' }))];
+      setServiceAreasCatalog(nextAreas);
+      saveStoredServiceAreas(nextAreas);
+    }
+
     const nextServers = servers.map(s => s.id === updatedServer.id ? updatedServer : s);
     setServers(nextServers);
     saveStoredServers(nextServers);
@@ -375,9 +493,9 @@ export default function App() {
         announcements,
         isProgramLocked,
         lockedMessage,
-        rolesCatalog,
+        rolesCatalog: nextRoles,
         hoursCatalog,
-        serviceAreasCatalog
+        serviceAreasCatalog: nextAreas
       });
     } catch (e) {
       console.warn('Auto-sync update server to sheets error:', e);
@@ -497,6 +615,8 @@ export default function App() {
                 activities={activities}
                 serviceAreasCatalog={serviceAreasCatalog}
                 rolesCatalog={rolesCatalog}
+                onUpdateRolesCatalog={handleUpdateRolesCatalog}
+                onUpdateServiceAreasCatalog={handleUpdateServiceAreasCatalog}
                 onAddServer={handleAddServer}
                 onUpdateServer={handleUpdateServer}
                 onDeleteServer={handleDeleteServer}
