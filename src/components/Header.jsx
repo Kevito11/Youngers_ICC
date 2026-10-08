@@ -12,8 +12,7 @@ export default function Header({
   activitiesCount,
   serversCount,
   isAdminAuthenticated,
-  onLogoutAdmin,
-  sheetsSyncState
+  onLogoutAdmin
 }) {
   const navScrollRef = useRef(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);

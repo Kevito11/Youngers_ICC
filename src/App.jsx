@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import GeneralCalendarView from './components/GeneralCalendarView';
 import TimelineVisual from './components/TimelineVisual';
@@ -22,13 +22,16 @@ import {
   loadStoredProgramLocked,
   saveStoredProgramLocked,
   loadStoredLockedMessage,
-  saveStoredLockedMessage,
-  resetAllToDefaults,
-  INITIAL_ACTIVITIES,
-  INITIAL_SERVERS,
-  INITIAL_ANNOUNCEMENTS,
-  DEFAULT_LOCKED_MESSAGE
+  saveStoredLockedMessage
 } from './data/initialData';
+import {
+  loadStoredRoles,
+  saveStoredRoles,
+  loadStoredHours,
+  saveStoredHours,
+  loadStoredServiceAreas,
+  saveStoredServiceAreas
+} from './data/catalogs';
 import { fetchFromGoogleSheets, syncToGoogleSheets } from './services/googleSheetsService';
 
 import './App.css';
@@ -61,18 +64,17 @@ export default function App() {
     return pathToTab(window.location.pathname);
   });
 
-  // State loaded exclusively from Google Sheets
-  const [activities, setActivities] = useState([]);
-  const [servers, setServers] = useState([]);
-  const [announcements, setAnnouncements] = useState([]);
-  const [isProgramLocked, setIsProgramLocked] = useState(false);
-  const [lockedMessage, setLockedMessage] = useState('');
-  
-  // Cloud loading & sync states
-  const [isLoadingSheets, setIsLoadingSheets] = useState(true);
-  const [sheetsSyncState, setSheetsSyncState] = useState('idle'); // 'idle' | 'syncing' | 'saved' | 'error'
-  const [sheetsError, setSheetsError] = useState(null);
-  const syncTimerRef = useRef(null);
+  // State loaded internally from localStorage (or initial defaults)
+  const [activities, setActivities] = useState(() => loadStoredActivities());
+  const [servers, setServers] = useState(() => loadStoredServers());
+  const [announcements, setAnnouncements] = useState(() => loadStoredAnnouncements());
+  const [isProgramLocked, setIsProgramLocked] = useState(() => loadStoredProgramLocked());
+  const [lockedMessage, setLockedMessage] = useState(() => loadStoredLockedMessage());
+
+  // Dynamic Catalogs State (Synchronized with Google Sheets)
+  const [rolesCatalog, setRolesCatalog] = useState(() => loadStoredRoles());
+  const [hoursCatalog, setHoursCatalog] = useState(() => loadStoredHours());
+  const [serviceAreasCatalog, setServiceAreasCatalog] = useState(() => loadStoredServiceAreas());
 
   // Password authentication state for administrative modification
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(() => {
@@ -90,56 +92,110 @@ export default function App() {
   const [selectedActivity, setSelectedActivity] = useState(null);
   const [activityToEditInAdmin, setActivityToEditInAdmin] = useState(null);
 
-  // Initial load directly from Google Apps Script / Sheet
-  const loadFromCloud = async () => {
-    setIsLoadingSheets(true);
-    setSheetsError(null);
-    try {
-      // Clear old local cache to guarantee 100% cloud reading
-      resetAllToDefaults();
-
-      const data = await fetchFromGoogleSheets();
-      if (data && data.success) {
-        setActivities(Array.isArray(data.activities) ? data.activities : []);
-        setServers(Array.isArray(data.servers) ? data.servers : []);
-        setAnnouncements(Array.isArray(data.announcements) ? data.announcements : []);
-        setIsProgramLocked(Boolean(data.isProgramLocked));
-        setLockedMessage(data.lockedMessage || DEFAULT_LOCKED_MESSAGE);
-      } else {
-        throw new Error(data?.error || 'No se pudieron recuperar los datos de Google Sheets');
-      }
-    } catch (err) {
-      console.error('Error al consultar Google Sheets:', err);
-      setSheetsError(err.message || 'Error de conexión con el script de Google Sheets');
-    } finally {
-      setIsLoadingSheets(false);
-    }
-  };
-
+  // Sincronización en segundo plano con Google Sheets para que los visitantes reciban siempre los datos más actualizados
   useEffect(() => {
-    loadFromCloud();
+    let isMounted = true;
+    const fetchLatestFromSheets = async () => {
+      try {
+        const data = await fetchFromGoogleSheets();
+        if (data && data.success && isMounted) {
+          if (Array.isArray(data.activities) && data.activities.length > 0) {
+            setActivities(data.activities);
+            saveStoredActivities(data.activities);
+          }
+          if (Array.isArray(data.servers) && data.servers.length > 0) {
+            setServers(data.servers);
+            saveStoredServers(data.servers);
+          }
+          if (Array.isArray(data.announcements)) {
+            setAnnouncements(data.announcements);
+            saveStoredAnnouncements(data.announcements);
+          }
+          if (Array.isArray(data.rolesCatalog) && data.rolesCatalog.length > 0) {
+            setRolesCatalog(data.rolesCatalog);
+            saveStoredRoles(data.rolesCatalog);
+          }
+          if (Array.isArray(data.hoursCatalog) && data.hoursCatalog.length > 0) {
+            setHoursCatalog(data.hoursCatalog);
+            saveStoredHours(data.hoursCatalog);
+          }
+          if (Array.isArray(data.serviceAreasCatalog) && data.serviceAreasCatalog.length > 0) {
+            setServiceAreasCatalog(data.serviceAreasCatalog);
+            saveStoredServiceAreas(data.serviceAreasCatalog);
+          }
+          if (data.isProgramLocked !== undefined) {
+            setIsProgramLocked(Boolean(data.isProgramLocked));
+            saveStoredProgramLocked(Boolean(data.isProgramLocked));
+          }
+          if (data.lockedMessage) {
+            setLockedMessage(data.lockedMessage);
+            saveStoredLockedMessage(data.lockedMessage);
+          }
+        }
+      } catch (err) {
+        console.warn('Uso de almacenamiento local (sin conexión a Google Sheets):', err.message);
+      }
+    };
+
+    fetchLatestFromSheets();
+    return () => { isMounted = false; };
   }, []);
 
-  // Trigger real-time sync directly to Google Sheets on any mutation
-  const triggerCloudSync = async (newActs, newSrvs, extras = {}) => {
-    setSheetsSyncState('syncing');
-    try {
-      await syncToGoogleSheets(
-        newActs !== undefined ? newActs : activities,
-        newSrvs !== undefined ? newSrvs : servers,
-        {
-          announcements: extras.announcements !== undefined ? extras.announcements : announcements,
-          isProgramLocked: extras.isProgramLocked !== undefined ? extras.isProgramLocked : isProgramLocked,
-          lockedMessage: extras.lockedMessage !== undefined ? extras.lockedMessage : lockedMessage
-        }
-      );
-      setSheetsSyncState('saved');
-      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
-      syncTimerRef.current = setTimeout(() => setSheetsSyncState('idle'), 3000);
-    } catch (err) {
-      console.error('Error al sincronizar con Google Sheets:', err);
-      setSheetsSyncState('error');
-    }
+  // Función para que el administrador envíe y publique toda la configuración en Google Sheets
+  const handleSyncToSheets = async (customExtra = {}) => {
+    return await syncToGoogleSheets(activities, servers, {
+      announcements,
+      isProgramLocked,
+      lockedMessage,
+      rolesCatalog: customExtra.rolesCatalog || rolesCatalog,
+      hoursCatalog: customExtra.hoursCatalog || hoursCatalog,
+      serviceAreasCatalog: customExtra.serviceAreasCatalog || serviceAreasCatalog,
+      ...customExtra
+    });
+  };
+
+  const handleUpdateRolesCatalog = (next) => {
+    setRolesCatalog(next);
+    saveStoredRoles(next);
+  };
+
+  const handleUpdateHoursCatalog = (next) => {
+    setHoursCatalog(next);
+    saveStoredHours(next);
+  };
+
+  const handleUpdateServiceAreasCatalog = (next) => {
+    setServiceAreasCatalog(next);
+    saveStoredServiceAreas(next);
+  };
+
+  // Renombrado en cascada para roles
+  const handleCascadeRenameRole = (oldRole, newRole) => {
+    const nextServers = servers.map(s => s.role === oldRole ? { ...s, role: newRole } : s);
+    setServers(nextServers);
+    saveStoredServers(nextServers);
+
+    const nextActivities = activities.map(act => ({
+      ...act,
+      serverAssignments: (act.serverAssignments || []).map(asg => asg.role === oldRole ? { ...asg, role: newRole } : asg)
+    }));
+    setActivities(nextActivities);
+    saveStoredActivities(nextActivities);
+  };
+
+  // Renombrado en cascada para áreas de servicio
+  const handleCascadeRenameArea = (oldArea, newArea) => {
+    const nextServers = servers.map(s => {
+      if (Array.isArray(s.primaryAreas) && s.primaryAreas.includes(oldArea)) {
+        return {
+          ...s,
+          primaryAreas: s.primaryAreas.map(a => a === oldArea ? newArea : a)
+        };
+      }
+      return s;
+    });
+    setServers(nextServers);
+    saveStoredServers(nextServers);
   };
 
   // Sync state to URL and listen to browser Back / Forward buttons
@@ -240,7 +296,7 @@ export default function App() {
     const nextList = activities.map(a => a.id === updatedAct.id ? updatedAct : a);
     setActivities(nextList);
     setSelectedActivity(updatedAct);
-    triggerCloudSync(nextList, servers);
+    saveStoredActivities(nextList);
   };
 
   // Jump to Admin to edit (Protected by password)
@@ -255,7 +311,7 @@ export default function App() {
     });
   };
 
-  // Save activity in Admin (add or update) -> Direct to Google Sheets
+  // Save activity in Admin (add or update) -> LocalStorage
   const handleSaveActivity = (activity) => {
     const exists = activities.some(a => a.id === activity.id);
     let nextList;
@@ -265,15 +321,15 @@ export default function App() {
       nextList = [...activities, activity];
     }
     setActivities(nextList);
-    triggerCloudSync(nextList, servers);
+    saveStoredActivities(nextList);
   };
 
-  // Delete activity in Admin -> Direct to Google Sheets
+  // Delete activity in Admin -> LocalStorage
   const handleDeleteActivity = (actId) => {
     requireModificationAuth(() => {
       const nextList = activities.filter(a => a.id !== actId);
       setActivities(nextList);
-      triggerCloudSync(nextList, servers);
+      saveStoredActivities(nextList);
     }, {
       title: 'Eliminar Actividad',
       description: 'Introduce la contraseña administrativa para autorizar la eliminación de esta actividad.'
@@ -291,37 +347,37 @@ export default function App() {
     });
   };
 
-  // Server management -> Direct to Google Sheets
+  // Server management -> LocalStorage
   const handleAddServer = (newServer) => {
     const nextServers = [...servers, newServer];
     setServers(nextServers);
-    triggerCloudSync(activities, nextServers);
+    saveStoredServers(nextServers);
   };
 
   const handleUpdateServer = (updatedServer) => {
     const nextServers = servers.map(s => s.id === updatedServer.id ? updatedServer : s);
     setServers(nextServers);
-    triggerCloudSync(activities, nextServers);
+    saveStoredServers(nextServers);
   };
 
   const handleDeleteServer = (serverId) => {
     requireModificationAuth(() => {
       const nextServers = servers.filter(s => s.id !== serverId);
       setServers(nextServers);
-      triggerCloudSync(activities, nextServers);
+      saveStoredServers(nextServers);
     }, {
       title: 'Eliminar Servidor',
       description: 'Introduce la contraseña administrativa para autorizar la eliminación de este servidor.'
     });
   };
 
-  // Update announcements -> Direct to Google Sheets
+  // Update announcements -> LocalStorage
   const handleUpdateAnnouncements = (newAnnouncements) => {
     setAnnouncements(newAnnouncements);
-    triggerCloudSync(activities, servers, { announcements: newAnnouncements });
+    saveStoredAnnouncements(newAnnouncements);
   };
 
-  // Program lock toggle per activity -> Direct to Google Sheets
+  // Program lock toggle per activity -> LocalStorage
   const handleToggleActivityLock = (activityId) => {
     requireModificationAuth(() => {
       const nextList = activities.map(a => {
@@ -336,31 +392,17 @@ export default function App() {
         return a;
       });
       setActivities(nextList);
-      triggerCloudSync(nextList, servers);
+      saveStoredActivities(nextList);
     }, {
       title: 'Control de Acceso al Programa',
       description: 'Introduce la clave administrativa para cambiar el bloqueo del programa de esta actividad.'
     });
   };
 
-  // Program lock message update -> Direct to Google Sheets
+  // Program lock message update -> LocalStorage
   const handleUpdateLockedMessage = (newMsg) => {
     setLockedMessage(newMsg);
-    triggerCloudSync(activities, servers, { lockedMessage: newMsg });
-  };
-
-  // Reset defaults -> Seeds full official calendar to Google Sheets
-  const handleResetDefaults = async () => {
-    setActivities(INITIAL_ACTIVITIES);
-    setServers(INITIAL_SERVERS);
-    setAnnouncements(INITIAL_ANNOUNCEMENTS);
-    setIsProgramLocked(false);
-    setLockedMessage(DEFAULT_LOCKED_MESSAGE);
-    await triggerCloudSync(INITIAL_ACTIVITIES, INITIAL_SERVERS, {
-      announcements: INITIAL_ANNOUNCEMENTS,
-      isProgramLocked: false,
-      lockedMessage: DEFAULT_LOCKED_MESSAGE
-    });
+    saveStoredLockedMessage(newMsg);
   };
 
   return (
@@ -374,127 +416,111 @@ export default function App() {
         serversCount={servers.length}
         isAdminAuthenticated={isAdminAuthenticated}
         onLogoutAdmin={handleAdminLogout}
-        sheetsSyncState={sheetsSyncState}
       />
 
-      {/* Cloud Error Alert if offline or connection issue */}
-      {sheetsError && (
-        <div className="container" style={{ marginTop: '1rem' }}>
-          <div className="sheets-error-banner">
-            <div>
-              <strong>⚠️ Conexión con Google Sheets:</strong> {sheetsError}
-            </div>
-            <button className="btn btn-secondary btn-sm" onClick={loadFromCloud}>
-              Reintentar Conexión
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Cloud Loading Screen on initial fetch */}
-      {isLoadingSheets ? (
-        <div className="sheets-loading-screen">
-          <div className="sheets-loading-card">
-            <div className="sheets-spinner"></div>
-            <h3>Cargando datos desde Google Sheets...</h3>
-            <p>Conectando con tu hoja de cálculo para leer en vivo todas las listas de actividades y servidores.</p>
-          </div>
-        </div>
-      ) : (
-        <>
-          {/* Main View Area */}
-          <main className="main-content-area">
+      {/* Main View Area */}
+      <main className="main-content-area">
         <div className="container">
 
           {/* Normal View Routing - Calendar is always visible */}
           <>
-              {currentTab === 'general' && (
-                <GeneralCalendarView
-                  activities={activities}
-                  onSelectActivity={handleSelectActivity}
-                />
-              )}
+            {currentTab === 'general' && (
+              <GeneralCalendarView
+                activities={activities}
+                onSelectActivity={handleSelectActivity}
+              />
+            )}
 
-              {currentTab === 'jotapece' && (
-                <TimelineVisual
-                  groupType="jotapece"
-                  activities={activities}
-                  onSelectActivity={handleSelectActivity}
-                />
-              )}
+            {currentTab === 'jotapece' && (
+              <TimelineVisual
+                groupType="jotapece"
+                activities={activities}
+                onSelectActivity={handleSelectActivity}
+              />
+            )}
 
-              {currentTab === 'siervos' && (
-                <TimelineVisual
-                  groupType="siervos"
-                  activities={activities}
-                  onSelectActivity={handleSelectActivity}
-                />
-              )}
+            {currentTab === 'siervos' && (
+              <TimelineVisual
+                groupType="siervos"
+                activities={activities}
+                onSelectActivity={handleSelectActivity}
+              />
+            )}
 
-              {currentTab === 'periodos' && (
-                <PeriodsHistoryView
-                  activities={activities}
-                  onSelectActivity={handleSelectActivity}
-                  onNavigateToCalendar={() => navigateToTab('general')}
-                />
-              )}
+            {currentTab === 'periodos' && (
+              <PeriodsHistoryView
+                activities={activities}
+                onSelectActivity={handleSelectActivity}
+                onNavigateToCalendar={() => navigateToTab('general')}
+              />
+            )}
 
-              {currentTab === 'servers' && (
-                <ServersDirectory
+            {currentTab === 'servers' && (
+              <ServersDirectory
+                servers={servers}
+                activities={activities}
+                serviceAreasCatalog={serviceAreasCatalog}
+                rolesCatalog={rolesCatalog}
+                onAddServer={handleAddServer}
+                onUpdateServer={handleUpdateServer}
+                onDeleteServer={handleDeleteServer}
+                onRequireAuth={requireModificationAuth}
+                isAdminAuthenticated={isAdminAuthenticated}
+              />
+            )}
+
+            {currentTab === 'admin' && (
+              isAdminAuthenticated ? (
+                <AdminPanel
+                  activities={activities}
                   servers={servers}
-                  activities={activities}
-                  onAddServer={handleAddServer}
-                  onUpdateServer={handleUpdateServer}
-                  onDeleteServer={handleDeleteServer}
+                  announcements={announcements}
+                  rolesCatalog={rolesCatalog}
+                  hoursCatalog={hoursCatalog}
+                  serviceAreasCatalog={serviceAreasCatalog}
+                  onUpdateRolesCatalog={handleUpdateRolesCatalog}
+                  onUpdateHoursCatalog={handleUpdateHoursCatalog}
+                  onUpdateServiceAreasCatalog={handleUpdateServiceAreasCatalog}
+                  onCascadeRenameRole={handleCascadeRenameRole}
+                  onCascadeRenameArea={handleCascadeRenameArea}
+                  onSaveActivity={handleSaveActivity}
+                  onDeleteActivity={handleDeleteActivity}
+                  onUpdateAnnouncements={handleUpdateAnnouncements}
+                  activityToEdit={activityToEditInAdmin}
+                  clearActivityToEdit={() => setActivityToEditInAdmin(null)}
+                  lockedMessage={lockedMessage}
+                  onUpdateLockedMessage={handleUpdateLockedMessage}
+                  onLogoutAdmin={handleAdminLogout}
                   onRequireAuth={requireModificationAuth}
-                  isAdminAuthenticated={isAdminAuthenticated}
+                  onToggleActivityLock={handleToggleActivityLock}
+                  onSyncToSheets={handleSyncToSheets}
                 />
-              )}
-
-              {currentTab === 'admin' && (
-                isAdminAuthenticated ? (
-                  <AdminPanel
-                    activities={activities}
-                    servers={servers}
-                    announcements={announcements}
-                    onSaveActivity={handleSaveActivity}
-                    onDeleteActivity={handleDeleteActivity}
-                    onResetDefaults={handleResetDefaults}
-                    onUpdateAnnouncements={handleUpdateAnnouncements}
-                    activityToEdit={activityToEditInAdmin}
-                    clearActivityToEdit={() => setActivityToEditInAdmin(null)}
-                    lockedMessage={lockedMessage}
-                    onUpdateLockedMessage={handleUpdateLockedMessage}
-                    onLogoutAdmin={handleAdminLogout}
-                    onRequireAuth={requireModificationAuth}
-                    onToggleActivityLock={handleToggleActivityLock}
-                  />
-                ) : (
-                  /* Admin Gate if user visits /admin without auth */
-                  <div className="admin-login-gate-card">
-                    <div className="gate-icon-circle">
-                      <Lock size={38} />
-                    </div>
-                    <h3 className="gate-title">Apartado de Modificación Protegido</h3>
-                    <p className="gate-desc">
-                      Esta sección contiene herramientas para crear, editar y eliminar actividades, cambiar horarios y gestionar el bloqueo del programa. Introduce la contraseña para ingresar.
-                    </p>
-                    <button 
-                      className="btn btn-primary btn-gate-enter"
-                      onClick={() => {
-                        requireModificationAuth(() => {}, {
-                           title: 'Acceso a la Administración',
-                           description: 'Introduce la clave administrativa para acceder.'
-                        });
-                      }}
-                    >
-                      <Key size={18} />
-                      <span>Ingresar Contraseña</span>
-                    </button>
+              ) : (
+                /* Admin Gate if user visits /admin without auth */
+                <div className="admin-login-gate-card">
+                  <div className="gate-icon-circle">
+                    <Lock size={38} />
                   </div>
-                )
-              )}
-            </>
+                  <h3 className="gate-title">Apartado de Modificación Protegido</h3>
+                  <p className="gate-desc">
+                    Esta sección contiene herramientas para crear, editar y eliminar actividades, cambiar horarios y gestionar el bloqueo del programa. Introduce la contraseña para ingresar.
+                  </p>
+                  <button 
+                    className="btn btn-primary btn-gate-enter"
+                    onClick={() => {
+                      requireModificationAuth(() => {}, {
+                         title: 'Acceso a la Administración',
+                         description: 'Introduce la clave administrativa para acceder.'
+                      });
+                    }}
+                  >
+                    <Key size={18} />
+                    <span>Ingresar Contraseña</span>
+                  </button>
+                </div>
+              )
+            )}
+          </>
         </div>
       </main>
 
@@ -528,8 +554,6 @@ export default function App() {
 
       {/* Floating Scroll-To-Top Button */}
       <ScrollToTopButton />
-        </>
-      )}
     </div>
   );
 }

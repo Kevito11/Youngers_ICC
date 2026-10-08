@@ -248,6 +248,27 @@ function doGet(e) {
       announcements = [];
     }
 
+    let rolesCatalog = [];
+    try {
+      rolesCatalog = JSON.parse(configMap['roles_catalog_json'] || '[]');
+    } catch (e) {
+      rolesCatalog = [];
+    }
+
+    let hoursCatalog = [];
+    try {
+      hoursCatalog = JSON.parse(configMap['hours_catalog_json'] || '[]');
+    } catch (e) {
+      hoursCatalog = [];
+    }
+
+    let serviceAreasCatalog = [];
+    try {
+      serviceAreasCatalog = JSON.parse(configMap['service_areas_json'] || '[]');
+    } catch (e) {
+      serviceAreasCatalog = [];
+    }
+
     const payload = {
       success: true,
       timestamp: new Date().toISOString(),
@@ -256,6 +277,9 @@ function doGet(e) {
       locations: locations,
       catalogBlocks: catalogBlocks,
       announcements: announcements,
+      rolesCatalog: rolesCatalog,
+      hoursCatalog: hoursCatalog,
+      serviceAreasCatalog: serviceAreasCatalog,
       isProgramLocked: configMap['programa_bloqueado_global'] === 'true',
       lockedMessage: configMap['mensaje_bloqueo'] || ''
     };
@@ -340,15 +364,28 @@ function doPost(e) {
       }
     }
 
-    if (body.announcements || body.lockedMessage !== undefined || body.isProgramLocked !== undefined) {
+    if (body.announcements || body.lockedMessage !== undefined || body.isProgramLocked !== undefined || body.rolesCatalog || body.hoursCatalog || body.serviceAreasCatalog) {
       const cfgSheet = ss.getSheetByName(SHEETS.CONFIG);
       if (cfgSheet) {
+        // Leemos configuración previa para no pisar claves no enviadas
+        let currentCfg = {};
         if (cfgSheet.getLastRow() > 1) {
+          const cfgRows = cfgSheet.getRange(2, 1, cfgSheet.getLastRow() - 1, 2).getValues();
+          cfgRows.forEach(r => { if (r[0]) currentCfg[r[0]] = r[1]; });
           cfgSheet.getRange(2, 1, cfgSheet.getLastRow() - 1, 2).clearContent();
         }
-        cfgSheet.appendRow(['programa_bloqueado_global', String(Boolean(body.isProgramLocked))]);
-        cfgSheet.appendRow(['mensaje_bloqueo', String(body.lockedMessage || '')]);
-        cfgSheet.appendRow(['anuncios_json', JSON.stringify(body.announcements || [])]);
+
+        if (body.isProgramLocked !== undefined) currentCfg['programa_bloqueado_global'] = String(Boolean(body.isProgramLocked));
+        if (body.lockedMessage !== undefined) currentCfg['mensaje_bloqueo'] = String(body.lockedMessage || '');
+        if (body.announcements) currentCfg['anuncios_json'] = JSON.stringify(body.announcements || []);
+        if (body.rolesCatalog && Array.isArray(body.rolesCatalog)) currentCfg['roles_catalog_json'] = JSON.stringify(body.rolesCatalog);
+        if (body.hoursCatalog && Array.isArray(body.hoursCatalog)) currentCfg['hours_catalog_json'] = JSON.stringify(body.hoursCatalog);
+        if (body.serviceAreasCatalog && Array.isArray(body.serviceAreasCatalog)) currentCfg['service_areas_json'] = JSON.stringify(body.serviceAreasCatalog);
+
+        const rowsToWrite = Object.keys(currentCfg).map(k => [k, currentCfg[k]]);
+        if (rowsToWrite.length > 0) {
+          cfgSheet.getRange(2, 1, rowsToWrite.length, 2).setValues(rowsToWrite);
+        }
       }
     }
 

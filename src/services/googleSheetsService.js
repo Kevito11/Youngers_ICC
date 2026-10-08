@@ -29,9 +29,14 @@ export async function fetchFromGoogleSheets() {
     throw new Error('No se ha configurado la URL del Script de Google Sheets.');
   }
 
-  const response = await fetch(url, {
+  // Añadir timestamp único para evitar que el navegador o proxies almacenen respuestas viejas en caché
+  const separator = url.includes('?') ? '&' : '?';
+  const freshUrl = `${url}${separator}_t=${Date.now()}`;
+
+  const response = await fetch(freshUrl, {
     method: 'GET',
-    mode: 'cors'
+    mode: 'cors',
+    cache: 'no-store'
   });
 
   if (!response.ok) {
@@ -62,6 +67,9 @@ export async function syncToGoogleSheets(activities, servers, extra = {}) {
     announcements: extra.announcements,
     isProgramLocked: extra.isProgramLocked,
     lockedMessage: extra.lockedMessage,
+    rolesCatalog: extra.rolesCatalog,
+    hoursCatalog: extra.hoursCatalog,
+    serviceAreasCatalog: extra.serviceAreasCatalog,
     timestamp: new Date().toISOString()
   };
 

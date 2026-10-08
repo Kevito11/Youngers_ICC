@@ -4,7 +4,7 @@ import {
   List, LayoutGrid, ChevronDown, ChevronUp
 } from './Icons';
 import UnsavedChangesModal from './UnsavedChangesModal';
-import { loadStoredRoles } from '../data/catalogs';
+import { loadStoredRoles, loadStoredServiceAreas } from '../data/catalogs';
 
 const BASE_DIRECTORY_ROLES = [
   'Pastor de Jóvenes / Líder General',
@@ -29,28 +29,11 @@ const BASE_DIRECTORY_ROLES = [
   'Servidor de Apoyo General'
 ];
 
-const BASE_SERVICE_AREAS = [
-  'Alabanza',
-  'Música / Instrumentos',
-  'Sonido y Audio',
-  'Multimedia y Proyección',
-  'Transmisión / Redes',
-  'Recepción y Bienvenida',
-  'Registro y Asistencia',
-  'Logística y Montaje',
-  'Desmontaje y Limpieza',
-  'Refrigerio y Hospitalidad',
-  'Dinámicas y Rompehielos',
-  'Predicación',
-  'Enseñanza / Maestro',
-  'Discipulado',
-  'Pastoral / Consejería',
-  'Dirección General'
-];
-
 export default function ServersDirectory({ 
   servers, 
   activities,
+  serviceAreasCatalog,
+  rolesCatalog,
   onAddServer, 
   onUpdateServer, 
   onDeleteServer,
@@ -81,7 +64,7 @@ export default function ServersDirectory({
   const [isAreasExpanded, setIsAreasExpanded] = useState(false);
 
   // Dynamically consolidate all available roles for the select list
-  const storedRoles = loadStoredRoles() || [];
+  const storedRoles = (rolesCatalog && rolesCatalog.length > 0) ? rolesCatalog : (loadStoredRoles() || []);
   const storedRoleNames = storedRoles.map(r => r.role).filter(Boolean);
   const existingServerRoles = (servers || []).map(s => s.role).filter(Boolean);
   const allAvailableRoles = Array.from(new Set([
@@ -90,7 +73,9 @@ export default function ServersDirectory({
     ...existingServerRoles
   ])).filter(Boolean);
 
-  // Dynamically consolidate all available service areas for multi-select
+  // Dynamically consolidate all available service areas for multi-select (from synchronized catalog)
+  const storedAreas = (serviceAreasCatalog && serviceAreasCatalog.length > 0) ? serviceAreasCatalog : (loadStoredServiceAreas() || []);
+  const storedAreaNames = storedAreas.map(a => typeof a === 'string' ? a : a.name).filter(Boolean);
   const existingServerAreas = (servers || []).flatMap(s => 
     Array.isArray(s.primaryAreas) 
       ? s.primaryAreas 
@@ -98,7 +83,7 @@ export default function ServersDirectory({
   );
   const selectedAreas = Array.isArray(formData.primaryAreas) ? formData.primaryAreas : [];
   const allAvailableAreas = Array.from(new Set([
-    ...BASE_SERVICE_AREAS,
+    ...storedAreaNames,
     ...existingServerAreas,
     ...selectedAreas
   ])).filter(Boolean);

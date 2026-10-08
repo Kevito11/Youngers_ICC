@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
-  Plus, Edit3, Trash2, MapPin, Check, X, RefreshCw,
+  Plus, Edit3, Trash2, MapPin, Check, X,
   Lock, Unlock, Key, AlertCircle, ArrowLeft, Calendar,
-  ChevronLeft, ChevronRight, Search, LayoutGrid, List
+  ChevronLeft, ChevronRight, Search, LayoutGrid, List,
+  CloudUpload, RefreshCw
 } from './Icons';
 import UnsavedChangesModal from './UnsavedChangesModal';
 import {
@@ -16,23 +17,33 @@ import {
   saveStoredRoles,
   loadStoredHours,
   saveStoredHours,
+  loadStoredServiceAreas,
+  saveStoredServiceAreas,
   parseDateComponents,
   buildDateStr
 } from '../data/catalogs';
 import {
-  getGoogleScriptUrl,
-  saveGoogleScriptUrl,
-  fetchFromGoogleSheets,
-  syncToGoogleSheets
-} from '../services/googleSheetsService';
+  saveStoredActivities,
+  saveStoredServers,
+  saveStoredAnnouncements,
+  saveStoredLockedMessage,
+  saveStoredProgramLocked
+} from '../data/initialData';
 
 export default function AdminPanel({ 
   activities, 
   servers, 
   announcements,
+  rolesCatalog: propRolesCatalog,
+  hoursCatalog: propHoursCatalog,
+  serviceAreasCatalog: propServiceAreasCatalog,
+  onUpdateRolesCatalog,
+  onUpdateHoursCatalog,
+  onUpdateServiceAreasCatalog,
+  onCascadeRenameRole,
+  onCascadeRenameArea,
   onSaveActivity, 
   onDeleteActivity,
-  onResetDefaults,
   onUpdateAnnouncements,
   activityToEdit,
   clearActivityToEdit,
@@ -40,7 +51,8 @@ export default function AdminPanel({
   onUpdateLockedMessage,
   onLogoutAdmin,
   onRequireAuth,
-  onToggleActivityLock
+  onToggleActivityLock,
+  onSyncToSheets
 }) {
   const [editingActivity, setEditingActivity] = useState(activityToEdit || null);
   const [isCreating, setIsCreating] = useState(false);
@@ -49,17 +61,34 @@ export default function AdminPanel({
   const [localLockedMessage, setLocalLockedMessage] = useState(lockedMessage || '');
   const [lockMessageSaved, setLockMessageSaved] = useState(false);
   const [showUnsavedPrompt, setShowUnsavedPrompt] = useState(false);
-  const [googleScriptUrl, setGoogleScriptUrl] = useState(() => getGoogleScriptUrl());
-  const [isSyncingSheets, setIsSyncingSheets] = useState(false);
-  const [sheetsSyncStatus, setSheetsSyncStatus] = useState(null);
 
-  // Custom text lists / catalogs state
-  const [rolesCatalog, setRolesCatalog] = useState(() => loadStoredRoles());
-  const [hoursCatalog, setHoursCatalog] = useState(() => loadStoredHours());
+  // Custom text lists / catalogs state (synchronized with Sheets & local fallback)
+  const [rolesCatalog, setRolesCatalog] = useState(() => (propRolesCatalog && propRolesCatalog.length > 0) ? propRolesCatalog : loadStoredRoles());
+  const [hoursCatalog, setHoursCatalog] = useState(() => (propHoursCatalog && propHoursCatalog.length > 0) ? propHoursCatalog : loadStoredHours());
+  const [serviceAreasCatalog, setServiceAreasCatalog] = useState(() => (propServiceAreasCatalog && propServiceAreasCatalog.length > 0) ? propServiceAreasCatalog : loadStoredServiceAreas());
+
+  useEffect(() => {
+    if (propRolesCatalog && propRolesCatalog.length > 0) setRolesCatalog(propRolesCatalog);
+  }, [propRolesCatalog]);
+  useEffect(() => {
+    if (propHoursCatalog && propHoursCatalog.length > 0) setHoursCatalog(propHoursCatalog);
+  }, [propHoursCatalog]);
+  useEffect(() => {
+    if (propServiceAreasCatalog && propServiceAreasCatalog.length > 0) setServiceAreasCatalog(propServiceAreasCatalog);
+  }, [propServiceAreasCatalog]);
+
   const [newRoleName, setNewRoleName] = useState('');
   const [newRoleDuties, setNewRoleDuties] = useState('');
   const [newHourValue, setNewHourValue] = useState('');
-  const [activeCatalogTab, setActiveCatalogTab] = useState('roles'); // 'roles' | 'hours'
+  const [newAreaName, setNewAreaName] = useState('');
+  const [newAreaDescription, setNewAreaDescription] = useState('');
+
+  // Inline editing states for modifying existing items in catalogs
+  const [editingRoleItem, setEditingRoleItem] = useState(null); // { originalRole, role, duties }
+  const [editingHourItem, setEditingHourItem] = useState(null); // { originalHour, value }
+  const [editingAreaItem, setEditingAreaItem] = useState(null); // { originalName, name, description }
+
+  const [activeCatalogTab, setActiveCatalogTab] = useState('roles'); // 'roles' | 'hours' | 'areas'
   const [isManualPreacher, setIsManualPreacher] = useState(false);
 
   // Servidores ordenados alfabéticamente (A-Z) para selección de predicador y asignaciones
@@ -140,6 +169,23 @@ export default function AdminPanel({
     if (!isRolesPaged) return rolesCatalog;
     return (rolesCatalog || []).slice(rolesStartIndex, rolesEndIndex);
   }, [rolesCatalog, isRolesPaged, rolesStartIndex, rolesEndIndex]);
+
+  // Paginated service areas for catalog card
+  const [areasPageSize, setAreasPageSize] = useState('5'); // '5' | '10' | '15' | 'all'
+  const [areasCurrentPage, setAreasCurrentPage] = useState(1);
+
+  const isAreasPaged = areasPageSize !== 'all';
+  const areasNumericLimit = parseInt(areasPageSize, 10) || 5;
+  const totalAreasItems = (serviceAreasCatalog || []).length;
+  const totalAreasPages = isAreasPaged ? Math.max(1, Math.ceil(totalAreasItems / areasNumericLimit)) : 1;
+  const safeAreasCurrentPage = Math.min(Math.max(1, areasCurrentPage), Math.max(1, totalAreasPages));
+  const areasStartIndex = isAreasPaged ? (safeAreasCurrentPage - 1) * areasNumericLimit : 0;
+  const areasEndIndex = isAreasPaged ? Math.min(areasStartIndex + areasNumericLimit, totalAreasItems) : totalAreasItems;
+
+  const displayedAreas = useMemo(() => {
+    if (!isAreasPaged) return serviceAreasCatalog;
+    return (serviceAreasCatalog || []).slice(areasStartIndex, areasEndIndex);
+  }, [serviceAreasCatalog, isAreasPaged, areasStartIndex, areasEndIndex]);
 
   const initialActivityRef = useRef(activityToEdit || null);
 
@@ -233,12 +279,12 @@ export default function AdminPanel({
         { time: isJpc ? '9:00 - 9:30 pm' : '9:35 - 10:00 pm', title: 'Desmontaje y recogida', responsible: 'Todos', completed: false, description: 'Limpieza del salón.' }
       ],
       serverAssignments: [
-        { role: 'Coordinador de Culto', serverId: 'srv-1', serverName: 'Joel Guzmán', status: 'Confirmado', duties: 'Supervisar programa y tiempos.' },
-        { role: 'Predicador', serverId: 'srv-2', serverName: 'Samuel Luciano', status: 'Confirmado', duties: 'Exposición de las Sagradas Escrituras.' },
-        { role: 'Alabanza', serverId: 'srv-6', serverName: 'Paola Reyes', status: 'Confirmado', duties: 'Dirección musical y ensayo puntual.' },
-        { role: 'Sonido y Audio', serverId: 'srv-7', serverName: 'Marcos Medina', status: 'Confirmado', duties: 'Consola, micrófonos y ecualización.' },
-        { role: 'Multimedia y Proyección', serverId: 'srv-8', serverName: 'Andrea Peña', status: 'Confirmado', duties: 'Letras, versículos y visuales.' },
-        { role: 'Recepción y Bienvenida', serverId: 'srv-9', serverName: 'Laura Gómez', status: 'Confirmado', duties: 'Mesa de bienvenida y registro.' }
+        { role: 'Coordinador de Culto', serverId: servers?.find(s => s.name?.includes('Joel'))?.id || '', serverName: servers?.find(s => s.name?.includes('Joel'))?.name || '', status: 'Confirmado', duties: 'Supervisar programa y tiempos.' },
+        { role: 'Predicador', serverId: servers?.find(s => s.name?.includes('Samuel'))?.id || '', serverName: servers?.find(s => s.name?.includes('Samuel'))?.name || '', status: 'Confirmado', duties: 'Exposición de las Sagradas Escrituras.' },
+        { role: 'Alabanza', serverId: servers?.find(s => s.name?.includes('Paola'))?.id || '', serverName: servers?.find(s => s.name?.includes('Paola'))?.name || '', status: 'Confirmado', duties: 'Dirección musical y ensayo puntual.' },
+        { role: 'Sonido y Audio', serverId: servers?.find(s => s.name?.includes('Marcos'))?.id || '', serverName: servers?.find(s => s.name?.includes('Marcos'))?.name || '', status: 'Confirmado', duties: 'Consola, micrófonos y ecualización.' },
+        { role: 'Multimedia y Proyección', serverId: servers?.find(s => s.name?.includes('Andrea'))?.id || '', serverName: servers?.find(s => s.name?.includes('Andrea'))?.name || '', status: 'Confirmado', duties: 'Letras, versículos y visuales.' },
+        { role: 'Recepción y Bienvenida', serverId: servers?.find(s => s.name?.includes('Laura'))?.id || '', serverName: servers?.find(s => s.name?.includes('Laura'))?.name || '', status: 'Confirmado', duties: 'Mesa de bienvenida y registro.' }
       ]
     };
   };
@@ -252,6 +298,17 @@ export default function AdminPanel({
 
   const handleStartEdit = (activity) => {
     const cloned = JSON.parse(JSON.stringify(activity));
+    if (Array.isArray(cloned.serverAssignments)) {
+      cloned.serverAssignments = cloned.serverAssignments.map(asg => {
+        if (asg.serverName) {
+          const match = (servers || []).find(s => s.id === asg.serverId || s.name?.trim().toLowerCase() === asg.serverName?.trim().toLowerCase());
+          if (match) {
+            return { ...asg, serverId: match.id, serverName: match.name };
+          }
+        }
+        return asg;
+      });
+    }
     initialActivityRef.current = JSON.parse(JSON.stringify(cloned));
     setEditingActivity(cloned);
     setIsCreating(false);
@@ -310,7 +367,7 @@ export default function AdminPanel({
   const addServerRole = (preferredServerId = null) => {
     const selectedServer = preferredServerId 
       ? servers.find(s => s.id === preferredServerId) 
-      : (servers[0] || { id: 'srv-1', name: 'Joel Guzmán' });
+      : null;
     const firstRole = rolesCatalog[0] || { role: 'Coordinador del Servicio', duties: 'Coordinar la logística del culto.' };
     setEditingActivity({
       ...editingActivity,
@@ -318,8 +375,8 @@ export default function AdminPanel({
         ...(editingActivity.serverAssignments || []),
         { 
           role: firstRole.role, 
-          serverId: selectedServer ? selectedServer.id : 'srv-1', 
-          serverName: selectedServer ? selectedServer.name : 'Joel Guzmán', 
+          serverId: selectedServer ? selectedServer.id : '', 
+          serverName: selectedServer ? selectedServer.name : '', 
           status: 'Confirmado', 
           duties: firstRole.duties 
         }
@@ -328,14 +385,14 @@ export default function AdminPanel({
   };
 
   const updateServerRole = (index, field, value) => {
-    const updated = editingActivity.serverAssignments.map((asg, idx) => {
+    const updated = (editingActivity.serverAssignments || []).map((asg, idx) => {
       if (idx === index) {
         if (field === 'serverId') {
           const selected = servers.find(s => s.id === value);
           return { 
             ...asg, 
             serverId: value, 
-            serverName: selected ? selected.name : asg.serverName 
+            serverName: selected ? selected.name : '' 
           };
         }
         if (field === 'role') {
@@ -359,21 +416,61 @@ export default function AdminPanel({
     setEditingActivity({ ...editingActivity, serverAssignments: updated });
   };
 
-  // Handlers for Managing Custom Text Catalogs (Roles and Hours)
+  // Handlers for Managing Custom Text Catalogs (Roles, Hours and Service Areas)
   const handleAddNewRole = (e) => {
     e.preventDefault();
     if (!newRoleName.trim()) return;
+    const trimmed = newRoleName.trim();
+    if (rolesCatalog.some(r => r.role?.toLowerCase() === trimmed.toLowerCase())) {
+      alert('Ya existe un rol con este nombre.');
+      return;
+    }
     const updated = [
       ...rolesCatalog,
       {
-        role: newRoleName.trim(),
+        role: trimmed,
         duties: newRoleDuties.trim() || 'Responsabilidad asignada para esta actividad.'
       }
     ];
     setRolesCatalog(updated);
     saveStoredRoles(updated);
+    if (onUpdateRolesCatalog) onUpdateRolesCatalog(updated);
     setNewRoleName('');
     setNewRoleDuties('');
+  };
+
+  const handleStartEditRole = (r) => {
+    setEditingRoleItem({
+      originalRole: r.role,
+      role: r.role,
+      duties: r.duties || ''
+    });
+  };
+
+  const handleSaveEditRole = () => {
+    if (!editingRoleItem || !editingRoleItem.role.trim()) return;
+    const newName = editingRoleItem.role.trim();
+    const oldName = editingRoleItem.originalRole;
+    if (newName.toLowerCase() !== oldName.toLowerCase() && rolesCatalog.some(r => r.role?.toLowerCase() === newName.toLowerCase())) {
+      alert('Ya existe otro rol con este nombre.');
+      return;
+    }
+    const updated = rolesCatalog.map(r => {
+      if (r.role === oldName) {
+        return {
+          role: newName,
+          duties: editingRoleItem.duties.trim() || 'Responsabilidad asignada para esta actividad.'
+        };
+      }
+      return r;
+    });
+    setRolesCatalog(updated);
+    saveStoredRoles(updated);
+    if (onUpdateRolesCatalog) onUpdateRolesCatalog(updated);
+    if (oldName !== newName && onCascadeRenameRole) {
+      onCascadeRenameRole(oldName, newName);
+    }
+    setEditingRoleItem(null);
   };
 
   const handleRemoveRole = (roleNameToRemove) => {
@@ -381,6 +478,10 @@ export default function AdminPanel({
       const updated = rolesCatalog.filter(r => r.role !== roleNameToRemove);
       setRolesCatalog(updated);
       saveStoredRoles(updated);
+      if (onUpdateRolesCatalog) onUpdateRolesCatalog(updated);
+      if (editingRoleItem?.originalRole === roleNameToRemove) {
+        setEditingRoleItem(null);
+      }
     }
   };
 
@@ -395,13 +496,151 @@ export default function AdminPanel({
     const updated = [...hoursCatalog, formatted];
     setHoursCatalog(updated);
     saveStoredHours(updated);
+    if (onUpdateHoursCatalog) onUpdateHoursCatalog(updated);
     setNewHourValue('');
+  };
+
+  const handleStartEditHour = (hour) => {
+    setEditingHourItem({
+      originalHour: hour,
+      value: hour
+    });
+  };
+
+  const handleSaveEditHour = () => {
+    if (!editingHourItem || !editingHourItem.value.trim()) return;
+    const newValue = editingHourItem.value.trim();
+    const oldValue = editingHourItem.originalHour;
+    if (newValue.toLowerCase() !== oldValue.toLowerCase() && hoursCatalog.some(h => h.toLowerCase() === newValue.toLowerCase())) {
+      alert('Ya existe esta hora en la lista.');
+      return;
+    }
+    const updated = hoursCatalog.map(h => h === oldValue ? newValue : h);
+    setHoursCatalog(updated);
+    saveStoredHours(updated);
+    if (onUpdateHoursCatalog) onUpdateHoursCatalog(updated);
+    setEditingHourItem(null);
   };
 
   const handleRemoveHour = (hourToRemove) => {
     const updated = hoursCatalog.filter(h => h !== hourToRemove);
     setHoursCatalog(updated);
     saveStoredHours(updated);
+    if (onUpdateHoursCatalog) onUpdateHoursCatalog(updated);
+    if (editingHourItem?.originalHour === hourToRemove) {
+      setEditingHourItem(null);
+    }
+  };
+
+  // Handlers for Service Areas Catalog
+  const handleAddNewArea = (e) => {
+    e.preventDefault();
+    if (!newAreaName.trim()) return;
+    const trimmed = newAreaName.trim();
+    if (serviceAreasCatalog.some(a => (typeof a === 'string' ? a : a.name).toLowerCase() === trimmed.toLowerCase())) {
+      alert('Ya existe un área de servicio con este nombre.');
+      return;
+    }
+    const updated = [
+      ...serviceAreasCatalog,
+      {
+        name: trimmed,
+        description: newAreaDescription.trim() || 'Área de servicio ministerial'
+      }
+    ];
+    setServiceAreasCatalog(updated);
+    saveStoredServiceAreas(updated);
+    if (onUpdateServiceAreasCatalog) onUpdateServiceAreasCatalog(updated);
+    setNewAreaName('');
+    setNewAreaDescription('');
+  };
+
+  const handleStartEditArea = (areaObj) => {
+    const name = typeof areaObj === 'string' ? areaObj : areaObj.name;
+    const desc = typeof areaObj === 'string' ? '' : (areaObj.description || '');
+    setEditingAreaItem({
+      originalName: name,
+      name: name,
+      description: desc
+    });
+  };
+
+  const handleSaveEditArea = () => {
+    if (!editingAreaItem || !editingAreaItem.name.trim()) return;
+    const newName = editingAreaItem.name.trim();
+    const oldName = editingAreaItem.originalName;
+    if (newName.toLowerCase() !== oldName.toLowerCase() && serviceAreasCatalog.some(a => (typeof a === 'string' ? a : a.name).toLowerCase() === newName.toLowerCase())) {
+      alert('Ya existe otra área de servicio con este nombre.');
+      return;
+    }
+    const updated = serviceAreasCatalog.map(a => {
+      const currentName = typeof a === 'string' ? a : a.name;
+      if (currentName === oldName) {
+        return {
+          name: newName,
+          description: editingAreaItem.description.trim() || 'Área de servicio ministerial'
+        };
+      }
+      return typeof a === 'string' ? { name: a, description: '' } : a;
+    });
+    setServiceAreasCatalog(updated);
+    saveStoredServiceAreas(updated);
+    if (onUpdateServiceAreasCatalog) onUpdateServiceAreasCatalog(updated);
+    if (oldName !== newName && onCascadeRenameArea) {
+      onCascadeRenameArea(oldName, newName);
+    }
+    setEditingAreaItem(null);
+  };
+
+  const handleRemoveArea = (areaNameToRemove) => {
+    if (confirm(`¿Eliminar el área "${areaNameToRemove}" del catálogo de servicio?`)) {
+      const updated = serviceAreasCatalog.filter(a => (typeof a === 'string' ? a : a.name) !== areaNameToRemove);
+      setServiceAreasCatalog(updated);
+      saveStoredServiceAreas(updated);
+      if (onUpdateServiceAreasCatalog) onUpdateServiceAreasCatalog(updated);
+      if (editingAreaItem?.originalName === areaNameToRemove) {
+        setEditingAreaItem(null);
+      }
+    }
+  };
+
+  const [isSyncingSheets, setIsSyncingSheets] = useState(false);
+  const [sheetsSyncStatus, setSheetsSyncStatus] = useState(null); // 'success' | 'error' | null
+
+  const handleSaveAllAdminChanges = async () => {
+    setIsSyncingSheets(true);
+    setSheetsSyncStatus(null);
+    try {
+      // 1. Guardar localmente como respaldo
+      saveStoredActivities(activities);
+      saveStoredServers(servers);
+      saveStoredAnnouncements(announcements);
+      saveStoredRoles(rolesCatalog);
+      saveStoredHours(hoursCatalog);
+      saveStoredServiceAreas(serviceAreasCatalog);
+      if (lockedMessage) saveStoredLockedMessage(lockedMessage);
+      saveStoredProgramLocked(Boolean(lockedActivitiesCount > 0));
+
+      // 2. Enviar y actualizar la hoja de cálculo de Google Sheets con todos los catálogos
+      if (onSyncToSheets) {
+        await onSyncToSheets({
+          rolesCatalog,
+          hoursCatalog,
+          serviceAreasCatalog
+        });
+      }
+
+      setSheetsSyncStatus('success');
+      setTimeout(() => {
+        setSheetsSyncStatus(null);
+      }, 4000);
+    } catch (err) {
+      console.error('Error al sincronizar con Google Sheets:', err);
+      setSheetsSyncStatus('error');
+      alert('Hubo un error al comunicar con Google Sheets. Revisa tu conexión a internet.');
+    } finally {
+      setIsSyncingSheets(false);
+    }
   };
 
   // Helper: Actualiza la fecha unificada calculando día de semana, día, mes y año
@@ -494,53 +733,6 @@ export default function AdminPanel({
     }
   };
 
-  // Google Sheets Handlers
-  const handleSaveSheetsUrl = () => {
-    saveGoogleScriptUrl(googleScriptUrl);
-    setSheetsSyncStatus({ type: 'success', message: 'URL del Script de Google Sheets guardada correctamente.' });
-    setTimeout(() => setSheetsSyncStatus(null), 3500);
-  };
-
-  const handleTestFetchSheets = async () => {
-    if (!googleScriptUrl.trim()) {
-      alert('Por favor introduce la URL del Google Apps Script primero.');
-      return;
-    }
-    setIsSyncingSheets(true);
-    setSheetsSyncStatus(null);
-    try {
-      const data = await fetchFromGoogleSheets();
-      setSheetsSyncStatus({ 
-        type: 'success', 
-        message: `Conexión exitosa. Se verificó acceso a Google Sheets (${data.activities?.length || 0} actividades, ${data.servers?.length || 0} servidores).` 
-      });
-    } catch (err) {
-      setSheetsSyncStatus({ type: 'error', message: `Error al conectar: ${err.message}` });
-    } finally {
-      setIsSyncingSheets(false);
-    }
-  };
-
-  const handleSyncToSheets = async () => {
-    if (!googleScriptUrl.trim()) {
-      alert('Por favor introduce la URL del Google Apps Script primero.');
-      return;
-    }
-    setIsSyncingSheets(true);
-    setSheetsSyncStatus(null);
-    try {
-      await syncToGoogleSheets(activities, servers);
-      setSheetsSyncStatus({ 
-        type: 'success', 
-        message: '¡Datos enviados exitosamente a Google Sheets! Tus hojas han sido actualizadas.' 
-      });
-    } catch (err) {
-      setSheetsSyncStatus({ type: 'error', message: `Error al sincronizar: ${err.message}` });
-    } finally {
-      setIsSyncingSheets(false);
-    }
-  };
-
   return (
     <div className="admin-panel-page">
       {/* Header */}
@@ -575,13 +767,53 @@ export default function AdminPanel({
             <span>Nueva Actividad Jotapece</span>
           </button>
           <button 
-            className="btn btn-primary" 
+            className="btn btn-secondary" 
             onClick={() => handleStartCreate('siervos')}
           >
             <Plus size={16} />
             <span>Nueva Actividad Siervos</span>
           </button>
         </div>
+      </div>
+
+      {/* Barra Destacada e Independiente para Guardar y Publicar en Google Sheets */}
+      <div className="admin-publish-banner">
+        <div className="publish-banner-info">
+          <div className="publish-banner-icon">
+            <CloudUpload size={24} />
+          </div>
+          <div>
+            <h4 className="publish-banner-title">Sincronización y Publicación en Vivo</h4>
+            <p className="publish-banner-desc">
+              Guarda tus modificaciones y actualiza la hoja de Google Sheets para que todos los jóvenes y servidores vean la información actualizada al entrar.
+            </p>
+          </div>
+        </div>
+
+        <button 
+          type="button" 
+          className={`btn-publish-sheets ${isSyncingSheets ? 'is-loading' : ''} ${sheetsSyncStatus === 'success' ? 'is-success' : ''}`}
+          onClick={handleSaveAllAdminChanges}
+          disabled={isSyncingSheets}
+          title="Guardar localmente y transmitir la configuración completa a Google Sheets para todos los usuarios"
+        >
+          {isSyncingSheets ? (
+            <>
+              <RefreshCw size={18} className="spin-anim" />
+              <span>Guardando en Google Sheets...</span>
+            </>
+          ) : sheetsSyncStatus === 'success' ? (
+            <>
+              <Check size={18} />
+              <span>¡Cambios Publicados con Éxito!</span>
+            </>
+          ) : (
+            <>
+              <CloudUpload size={18} />
+              <span>Guardar Cambios en Google Sheets</span>
+            </>
+          )}
+        </button>
       </div>
 
       {/* Program Access Lock Control Card */}
@@ -662,14 +894,25 @@ export default function AdminPanel({
                   </span>
                   <h3 className="editor-heading">{editingActivity.title || 'Sin título'}</h3>
                 </div>
-                <button 
-                  type="button"
-                  className="modal-close-btn"
-                  onClick={handleAttemptCloseActivityEditor}
-                  title="Cerrar editor [Esc]"
-                >
-                  <X size={20} />
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                  <button 
+                    type="button" 
+                    className="btn btn-primary btn-sm"
+                    onClick={handleSaveCurrentActivity}
+                    title="Guardar todos los cambios de esta actividad"
+                  >
+                    <Check size={16} />
+                    <span>Guardar Cambios</span>
+                  </button>
+                  <button 
+                    type="button"
+                    className="modal-close-btn"
+                    onClick={handleAttemptCloseActivityEditor}
+                    title="Cerrar editor [Esc]"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
               </div>
 
           <form onSubmit={handleSaveCurrentActivity} className="editor-form">
@@ -1176,10 +1419,15 @@ export default function AdminPanel({
                       <div className="role-field">
                         <label>Servidor Asignado</label>
                         <select 
-                          value={asg.serverId}
+                          value={
+                            asg.serverId || 
+                            sortedServers.find(s => s.name?.trim().toLowerCase() === asg.serverName?.trim().toLowerCase())?.id || 
+                            ''
+                          }
                           onChange={e => updateServerRole(idx, 'serverId', e.target.value)}
                           className="form-select"
                         >
+                          <option value="">-- Seleccionar Servidor --</option>
                           {sortedServers.map(s => (
                             <option key={s.id} value={s.id}>
                               {s.name} {s.nickname ? `(${s.nickname})` : ''} - {s.role}
@@ -1211,25 +1459,35 @@ export default function AdminPanel({
                       </button>
                     </div>
 
-                    <div className="role-extra-actions-row">
-                      {(() => {
-                        const count = (editingActivity.serverAssignments || []).filter(item => item.serverId === asg.serverId).length;
-                        return count > 1 ? (
-                          <span className="server-multi-badge">
-                            ⭐ Este servidor tiene {count} roles asignados
-                          </span>
-                        ) : null;
-                      })()}
-                      <button 
-                        type="button" 
-                        className="btn-add-secondary-role"
-                        onClick={() => addServerRole(asg.serverId)}
-                        title="Asignar un rol adicional a este mismo servidor en esta actividad"
-                      >
-                        <Plus size={13} />
-                        <span>+ Asignar otro rol a {asg.serverName?.split(' ')[0] || 'este servidor'}</span>
-                      </button>
-                    </div>
+                    {/* Botón para asignar otro rol a este servidor (solo visible si hay un servidor seleccionado) */}
+                    {Boolean(asg.serverId || (asg.serverName && asg.serverName.trim())) && (
+                      <div className="role-extra-actions-row">
+                        {(() => {
+                          const currentId = asg.serverId || sortedServers.find(s => s.name?.trim().toLowerCase() === asg.serverName?.trim().toLowerCase())?.id;
+                          const count = (editingActivity.serverAssignments || []).filter(item => 
+                            (currentId && item.serverId === currentId) || 
+                            (asg.serverName && item.serverName === asg.serverName)
+                          ).length;
+                          return count > 1 ? (
+                            <span className="server-multi-badge">
+                              ⭐ Este servidor tiene {count} roles asignados
+                            </span>
+                          ) : null;
+                        })()}
+                        <button 
+                          type="button" 
+                          className="btn-add-secondary-role"
+                          onClick={() => {
+                            const targetId = asg.serverId || sortedServers.find(s => s.name?.trim().toLowerCase() === asg.serverName?.trim().toLowerCase())?.id;
+                            addServerRole(targetId);
+                          }}
+                          title="Asignar un rol adicional a este mismo servidor en esta actividad"
+                        >
+                          <Plus size={13} />
+                          <span>Asignar otro rol a {asg.serverName?.split(' ')[0] || 'este servidor'}</span>
+                        </button>
+                      </div>
+                    )}
 
                     <div className="role-field full-field">
                       <div className="duties-label-row">
@@ -1646,23 +1904,39 @@ export default function AdminPanel({
           <div>
             <h3 className="sub-heading">Gestor de Listas y Catálogos de Textos</h3>
             <p className="desc">
-              Personaliza y agrega los roles con sus descripciones (para que al asignar un servidor solo tengas que seleccionar el rol y se complete su responsabilidad) y las horas disponibles para el programa.
+              Personaliza, edita o renombra los roles ministeriales, las horas del programa y las áreas de servicio. Todos los cambios se guardan y sincronizan en la nube (Google Sheets).
             </p>
           </div>
           <div className="catalogs-tab-switch">
             <button
               type="button"
               className={`btn-tab-switch ${activeCatalogTab === 'roles' ? 'active' : ''}`}
-              onClick={() => setActiveCatalogTab('roles')}
+              onClick={() => {
+                setActiveCatalogTab('roles');
+                setEditingRoleItem(null);
+              }}
             >
               Roles y Descripciones ({rolesCatalog.length})
             </button>
             <button
               type="button"
               className={`btn-tab-switch ${activeCatalogTab === 'hours' ? 'active' : ''}`}
-              onClick={() => setActiveCatalogTab('hours')}
+              onClick={() => {
+                setActiveCatalogTab('hours');
+                setEditingHourItem(null);
+              }}
             >
               Horas del Programa ({hoursCatalog.length})
+            </button>
+            <button
+              type="button"
+              className={`btn-tab-switch ${activeCatalogTab === 'areas' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveCatalogTab('areas');
+                setEditingAreaItem(null);
+              }}
+            >
+              Áreas de Servicio ({serviceAreasCatalog.length})
             </button>
           </div>
         </div>
@@ -1726,22 +2000,69 @@ export default function AdminPanel({
                 </div>
               </div>
               <div className="roles-grid-cards">
-                {displayedRoles.map((r, rIdx) => (
-                  <div key={rIdx} className="role-catalog-item-card">
-                    <div className="role-item-top">
-                      <strong className="role-item-name">{r.role}</strong>
-                      <button
-                        type="button"
-                        className="btn-delete-catalog-item"
-                        onClick={() => handleRemoveRole(r.role)}
-                        title="Eliminar este rol de la lista"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                {displayedRoles.map((r, rIdx) => {
+                  const isEditingThis = editingRoleItem && editingRoleItem.originalRole === r.role;
+                  return (
+                    <div key={rIdx} className={`role-catalog-item-card ${isEditingThis ? 'is-editing' : ''}`}>
+                      {isEditingThis ? (
+                        <div className="catalog-inline-edit-box">
+                          <div className="inline-edit-field">
+                            <label>Nombre del Rol:</label>
+                            <input 
+                              type="text" 
+                              value={editingRoleItem.role} 
+                              onChange={e => setEditingRoleItem({ ...editingRoleItem, role: e.target.value })}
+                              className="form-input"
+                              autoFocus
+                            />
+                          </div>
+                          <div className="inline-edit-field">
+                            <label>Descripción / Responsabilidad:</label>
+                            <textarea 
+                              rows={2}
+                              value={editingRoleItem.duties} 
+                              onChange={e => setEditingRoleItem({ ...editingRoleItem, duties: e.target.value })}
+                              className="form-textarea"
+                            />
+                          </div>
+                          <div className="inline-edit-btns">
+                            <button type="button" className="btn btn-sm btn-primary" onClick={handleSaveEditRole}>
+                              <Check size={14} /> Guardar
+                            </button>
+                            <button type="button" className="btn btn-sm btn-secondary" onClick={() => setEditingRoleItem(null)}>
+                              <X size={14} /> Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="role-item-top">
+                            <strong className="role-item-name">{r.role}</strong>
+                            <div className="catalog-item-actions">
+                              <button
+                                type="button"
+                                className="btn-edit-catalog-item"
+                                onClick={() => handleStartEditRole(r)}
+                                title="Modificar nombre o descripción de este rol"
+                              >
+                                <Edit3 size={14} />
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-delete-catalog-item"
+                                onClick={() => handleRemoveRole(r.role)}
+                                title="Eliminar este rol de la lista"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </div>
+                          <p className="role-item-duties">{r.duties}</p>
+                        </>
+                      )}
                     </div>
-                    <p className="role-item-duties">{r.duties}</p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               {isRolesPaged && totalRolesPages > 1 && (
@@ -1818,93 +2139,232 @@ export default function AdminPanel({
                 <span>Horas disponibles para seleccionar en los bloques ({hoursCatalog.length}):</span>
               </div>
               <div className="hours-chips-wrap">
-                {hoursCatalog.map((h, hIdx) => (
-                  <div key={hIdx} className="hour-chip">
-                    <span>{h}</span>
-                    <button
-                      type="button"
-                      className="btn-remove-chip"
-                      onClick={() => handleRemoveHour(h)}
-                      title="Eliminar hora"
-                    >
-                      <X size={12} />
-                    </button>
-                  </div>
-                ))}
+                {hoursCatalog.map((h, hIdx) => {
+                  const isEditingThis = editingHourItem && editingHourItem.originalHour === h;
+                  return (
+                    <div key={hIdx} className={`hour-chip ${isEditingThis ? 'is-editing' : ''}`}>
+                      {isEditingThis ? (
+                        <div className="hour-chip-edit-form">
+                          <input 
+                            type="text" 
+                            value={editingHourItem.value} 
+                            onChange={e => setEditingHourItem({ ...editingHourItem, value: e.target.value })}
+                            className="form-input hour-chip-inline-input"
+                            autoFocus
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') { e.preventDefault(); handleSaveEditHour(); }
+                              if (e.key === 'Escape') { e.preventDefault(); setEditingHourItem(null); }
+                            }}
+                          />
+                          <button type="button" className="btn-chip-action save" onClick={handleSaveEditHour} title="Guardar hora">
+                            <Check size={12} />
+                          </button>
+                          <button type="button" className="btn-chip-action cancel" onClick={() => setEditingHourItem(null)} title="Cancelar">
+                            <X size={12} />
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <span className="hour-chip-text">{h}</span>
+                          <div className="hour-chip-actions">
+                            <button
+                              type="button"
+                              className="btn-edit-chip"
+                              onClick={() => handleStartEditHour(h)}
+                              title="Modificar esta hora"
+                            >
+                              <Edit3 size={11} />
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-remove-chip"
+                              onClick={() => handleRemoveHour(h)}
+                              title="Eliminar hora"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
         )}
-      </div>
 
-      {/* Google Sheets Integration Card */}
-      <div className="admin-sheets-sync-card">
-        <div className="sheets-card-header">
-          <div className="sheets-icon-badge">
-            <RefreshCw size={22} className={isSyncingSheets ? 'spin-anim' : ''} />
-          </div>
-          <div>
-            <h3 className="sub-heading" style={{ margin: 0 }}>Sincronización con Google Sheets (Google Apps Script)</h3>
-            <p className="desc" style={{ margin: '0.25rem 0 0' }}>
-              Almacena y respalda todas las actividades, servidores, catálogo de bloques y ubicaciones en una hoja de cálculo vinculada mediante Google Apps Script.
-            </p>
-          </div>
-        </div>
+        {/* Tab 3: Service Areas */}
+        {activeCatalogTab === 'areas' && (
+          <div className="catalog-tab-content">
+            <form onSubmit={handleAddNewArea} className="catalog-add-form">
+              <div className="add-role-grid">
+                <div className="form-group">
+                  <label>Nombre del Área de Servicio *</label>
+                  <input
+                    type="text"
+                    required
+                    value={newAreaName}
+                    onChange={e => setNewAreaName(e.target.value)}
+                    placeholder="Ej. Redes y Fotografía"
+                    className="form-input"
+                  />
+                </div>
+                <div className="form-group flex-2">
+                  <label>Descripción / Enfoque del Área</label>
+                  <input
+                    type="text"
+                    value={newAreaDescription}
+                    onChange={e => setNewAreaDescription(e.target.value)}
+                    placeholder="Ej. Cobertura audiovisual, fotos de la reunión y redes sociales..."
+                    className="form-input"
+                  />
+                </div>
+                <div className="form-group btn-col">
+                  <button type="submit" className="btn btn-primary btn-add-catalog">
+                    <Plus size={16} />
+                    <span>Agregar Área</span>
+                  </button>
+                </div>
+              </div>
+            </form>
 
-        <div className="sheets-input-section">
-          <label className="sheets-input-label">URL de la Aplicación Web (Google Apps Script):</label>
-          <div className="sheets-url-row">
-            <input 
-              type="url"
-              className="form-input sheets-url-input"
-              value={googleScriptUrl}
-              onChange={e => setGoogleScriptUrl(e.target.value)}
-              placeholder="https://script.google.com/macros/s/.../exec"
-            />
-            <button 
-              type="button" 
-              className="btn btn-secondary"
-              onClick={handleSaveSheetsUrl}
-            >
-              <Check size={16} />
-              <span>Guardar URL</span>
-            </button>
-          </div>
-        </div>
+            <div className="catalog-items-list">
+              <div className="catalog-items-count-header roles-header-flex">
+                <span>Áreas de servicio ministeriales configuradas ({serviceAreasCatalog.length}):</span>
+                <div className="page-limit-selector roles-limit-selector" title="Cantidad de áreas a visualizar">
+                  <span className="limit-selector-label">Ver:</span>
+                  <div className="limit-pills-group">
+                    {['5', '10', '15', 'all'].map(opt => (
+                      <button
+                        key={opt}
+                        type="button"
+                        className={`limit-pill-btn ${areasPageSize === opt ? 'active' : ''}`}
+                        onClick={() => {
+                          setAreasPageSize(opt);
+                          setAreasCurrentPage(1);
+                        }}
+                      >
+                        {opt === 'all' ? 'Todos' : opt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="roles-grid-cards">
+                {displayedAreas.map((areaItem, aIdx) => {
+                  const areaName = typeof areaItem === 'string' ? areaItem : areaItem.name;
+                  const areaDesc = typeof areaItem === 'string' ? '' : (areaItem.description || '');
+                  const isEditingThis = editingAreaItem && editingAreaItem.originalName === areaName;
 
-        <div className="sheets-actions-bar">
-          <div className="sheets-btns-group">
-            <button 
-              type="button"
-              className="btn btn-secondary"
-              onClick={handleTestFetchSheets}
-              disabled={isSyncingSheets}
-            >
-              <RefreshCw size={15} className={isSyncingSheets ? 'spin-anim' : ''} />
-              <span>{isSyncingSheets ? 'Conectando...' : 'Probar Conexión'}</span>
-            </button>
-            <button 
-              type="button" 
-              className="btn btn-primary"
-              onClick={handleSyncToSheets}
-              disabled={isSyncingSheets}
-            >
-              <Check size={16} />
-              <span>{isSyncingSheets ? 'Sincronizando...' : 'Enviar Datos a Google Sheets'}</span>
-            </button>
-          </div>
+                  return (
+                    <div key={aIdx} className={`role-catalog-item-card ${isEditingThis ? 'is-editing' : ''}`}>
+                      {isEditingThis ? (
+                        <div className="catalog-inline-edit-box">
+                          <div className="inline-edit-field">
+                            <label>Nombre del Área:</label>
+                            <input 
+                              type="text" 
+                              value={editingAreaItem.name} 
+                              onChange={e => setEditingAreaItem({ ...editingAreaItem, name: e.target.value })}
+                              className="form-input"
+                              autoFocus
+                            />
+                          </div>
+                          <div className="inline-edit-field">
+                            <label>Descripción / Enfoque:</label>
+                            <textarea 
+                              rows={2}
+                              value={editingAreaItem.description} 
+                              onChange={e => setEditingAreaItem({ ...editingAreaItem, description: e.target.value })}
+                              className="form-textarea"
+                            />
+                          </div>
+                          <div className="inline-edit-btns">
+                            <button type="button" className="btn btn-sm btn-primary" onClick={handleSaveEditArea}>
+                              <Check size={14} /> Guardar
+                            </button>
+                            <button type="button" className="btn btn-sm btn-secondary" onClick={() => setEditingAreaItem(null)}>
+                              <X size={14} /> Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="role-item-top">
+                            <strong className="role-item-name">{areaName}</strong>
+                            <div className="catalog-item-actions">
+                              <button
+                                type="button"
+                                className="btn-edit-catalog-item"
+                                onClick={() => handleStartEditArea(areaItem)}
+                                title="Modificar nombre o descripción de esta área"
+                              >
+                                <Edit3 size={14} />
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-delete-catalog-item"
+                                onClick={() => handleRemoveArea(areaName)}
+                                title="Eliminar esta área del catálogo"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </div>
+                          <p className="role-item-duties">
+                            {areaDesc || <span style={{ fontStyle: 'italic', color: '#94a3b8' }}>Sin descripción detallada</span>}
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
 
-          {sheetsSyncStatus && (
-            <div className={`sheets-status-badge ${sheetsSyncStatus.type === 'error' ? 'status-error' : 'status-success'}`}>
-              {sheetsSyncStatus.type === 'error' ? <AlertCircle size={15} /> : <Check size={15} />}
-              <span>{sheetsSyncStatus.message}</span>
+              {isAreasPaged && totalAreasPages > 1 && (
+                <div className="pagination-bar roles-pagination-bar" style={{ marginTop: '1rem', padding: '0.75rem 1rem' }}>
+                  <div className="pagination-info" style={{ fontSize: '0.82rem' }}>
+                    Mostrando <strong>{totalAreasItems > 0 ? areasStartIndex + 1 : 0}–{areasEndIndex}</strong> de <strong>{totalAreasItems}</strong> áreas
+                  </div>
+                  <div className="pagination-nav">
+                    <button
+                      type="button"
+                      className="btn-page-nav"
+                      disabled={safeAreasCurrentPage <= 1}
+                      onClick={() => setAreasCurrentPage(p => Math.max(1, p - 1))}
+                      title="Página anterior"
+                    >
+                      <ChevronLeft size={14} />
+                    </button>
+                    <div className="pagination-numbers">
+                      {Array.from({ length: totalAreasPages }, (_, i) => i + 1).map(pNum => (
+                        <button
+                          key={pNum}
+                          type="button"
+                          className={`page-num-btn ${pNum === safeAreasCurrentPage ? 'active' : ''}`}
+                          style={{ minWidth: '30px', height: '30px', fontSize: '0.82rem' }}
+                          onClick={() => setAreasCurrentPage(pNum)}
+                        >
+                          {pNum}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      className="btn-page-nav"
+                      disabled={safeAreasCurrentPage >= totalAreasPages}
+                      onClick={() => setAreasCurrentPage(p => Math.min(totalAreasPages, p + 1))}
+                      title="Página siguiente"
+                    >
+                      <ChevronRight size={14} />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-
-        <div className="sheets-help-tip">
-          ℹ️ <strong>Estructura automática:</strong> El script incluido en <code>google-apps-script/Code.gs</code> configura automáticamente las 6 pestañas requeridas (<em>Actividades, Programas, Servidores, Lugares, BloquesCatalogo, Configuracion</em>).
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Notices & Announcements Manager */}
@@ -1933,36 +2393,13 @@ export default function AdminPanel({
         </div>
       </div>
 
-      {/* Dangerous Reset Defaults Action */}
-      <div className="admin-danger-zone">
-        <div className="danger-text">
-          <strong>Restablecer al Calendario Oficial Original</strong>
-          <p>Restaura todas las 13 actividades originales y servidores de Octubre a Diciembre 2026.</p>
+      {/* Floating Confirmation Toast for Global Admin Save */}
+      {sheetsSyncStatus === 'success' && (
+        <div className="admin-save-toast">
+          <Check size={18} />
+          <span>¡Todos los cambios fueron guardados y enviados a Google Sheets con éxito! Todos los usuarios verán esta versión actualizada.</span>
         </div>
-        <button 
-          className="btn btn-secondary btn-danger-outline"
-          onClick={() => {
-            const executeReset = () => {
-              if (confirm('¿Deseas restaurar todas las actividades al calendario oficial inicial de Youngers ICC?')) {
-                onResetDefaults();
-                alert('¡Datos restablecidos al calendario oficial inicial!');
-              }
-            };
-
-            if (onRequireAuth) {
-              onRequireAuth(executeReset, {
-                title: 'Restablecer Valores Predeterminados',
-                description: 'Esta acción borrará todas las modificaciones locales. Introduce la contraseña administrativa para confirmar.'
-              });
-            } else {
-              executeReset();
-            }
-          }}
-        >
-          <RefreshCw size={16} />
-          <span>Restaurar Valores Predeterminados</span>
-        </button>
-      </div>
+      )}
     </div>
   );
 }

@@ -244,8 +244,29 @@ export const DEFAULT_PROGRAM_HOURS = [
   '10:00 pm'
 ];
 
+// 7. Catálogo de Áreas de Servicio para Servidores
+export const DEFAULT_SERVICE_AREAS = [
+  { name: 'Alabanza', description: 'Vocalistas, dirección de cantos y ensamble vocal' },
+  { name: 'Música / Instrumentos', description: 'Banda instrumental, piano, guitarra, bajo y batería' },
+  { name: 'Sonido y Audio', description: 'Consola, micrófonos, monitoreo y acústica FOH' },
+  { name: 'Multimedia y Proyección', description: 'Letras de canciones, diapositivas y avisos en pantalla' },
+  { name: 'Transmisión / Redes', description: 'Cámaras, streaming en vivo y cobertura digital' },
+  { name: 'Recepción y Bienvenida', description: 'Atención a visitantes, gafetes y hospitalidad en la entrada' },
+  { name: 'Registro y Asistencia', description: 'Toma de asistencia, padrón de miembros y nuevos contactos' },
+  { name: 'Logística y Montaje', description: 'Organización de sillas, tarima, utilería y soporte previo' },
+  { name: 'Desmontaje y Limpieza', description: 'Recogida de cables, orden del salón y recogida general' },
+  { name: 'Refrigerio y Hospitalidad', description: 'Preparación y distribución de la merienda' },
+  { name: 'Dinámicas y Rompehielos', description: 'Juegos e integración social y temática' },
+  { name: 'Predicación', description: 'Exposición bíblica del mensaje' },
+  { name: 'Enseñanza / Maestro', description: 'Estudios bíblicos y clases para jóvenes' },
+  { name: 'Discipulado', description: 'Acompañamiento espiritual y grupos pequeños' },
+  { name: 'Pastoral / Consejería', description: 'Orientación pastoral y cuidado de los jóvenes' },
+  { name: 'Dirección General', description: 'Liderazgo pastoral y coordinación general' }
+];
+
 const STORAGE_CUSTOM_ROLES_KEY = 'youngers_custom_roles_v2';
 const STORAGE_CUSTOM_HOURS_KEY = 'youngers_custom_hours_v2';
+const STORAGE_CUSTOM_AREAS_KEY = 'youngers_custom_service_areas_v2';
 
 export function loadStoredRoles() {
   try {
@@ -286,6 +307,33 @@ export function saveStoredHours(hours) {
     localStorage.setItem(STORAGE_CUSTOM_HOURS_KEY, JSON.stringify(hours));
   } catch (e) {
     console.error('Error saving hours catalog', e);
+  }
+}
+
+export function loadStoredServiceAreas() {
+  try {
+    const raw = localStorage.getItem(STORAGE_CUSTOM_AREAS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map(item => 
+          typeof item === 'string' 
+            ? { name: item, description: '' } 
+            : { name: item.name || '', description: item.description || '' }
+        );
+      }
+    }
+  } catch (e) {
+    console.error('Error loading service areas catalog', e);
+  }
+  return DEFAULT_SERVICE_AREAS;
+}
+
+export function saveStoredServiceAreas(areas) {
+  try {
+    localStorage.setItem(STORAGE_CUSTOM_AREAS_KEY, JSON.stringify(areas));
+  } catch (e) {
+    console.error('Error saving service areas catalog', e);
   }
 }
 

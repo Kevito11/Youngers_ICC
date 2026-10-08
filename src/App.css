@@ -1598,6 +1598,14 @@
   align-items: center;
 }
 
+.step-check-readonly {
+  margin-top: 0.15rem;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+  user-select: none;
+}
+
 .step-check-btn.is-locked-btn {
   cursor: pointer;
   opacity: 0.8;
@@ -2204,15 +2212,18 @@
   gap: 0.75rem;
 }
 
-.step-edit-row, .role-edit-top-row {
+.step-edit-row {
   display: grid;
-  grid-template-columns: 140px 1.5fr 1fr auto;
+  grid-template-columns: minmax(230px, 260px) 1.5fr 1fr auto;
   gap: 0.75rem;
   align-items: flex-end;
 }
 
 .role-edit-top-row {
-  grid-template-columns: 1.2fr 1.5fr 120px auto;
+  display: grid;
+  grid-template-columns: 1.2fr 1.5fr 135px auto;
+  gap: 0.75rem;
+  align-items: flex-end;
 }
 
 .step-field, .role-field {
@@ -7210,6 +7221,7 @@ html, body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 0.5rem;
 }
 
 .role-item-name {
@@ -7217,12 +7229,35 @@ html, body {
   color: #0f172a;
 }
 
+.catalog-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.btn-edit-catalog-item {
+  background: transparent;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  transition: all 0.15s;
+}
+
+.btn-edit-catalog-item:hover {
+  color: #0284c7;
+  background: #e0f2fe;
+}
+
 .btn-delete-catalog-item {
   background: transparent;
   border: none;
   color: #94a3b8;
   cursor: pointer;
-  padding: 0.2rem;
+  padding: 0.25rem;
   border-radius: 4px;
   display: flex;
   align-items: center;
@@ -7232,6 +7267,58 @@ html, body {
 .btn-delete-catalog-item:hover {
   color: #ef4444;
   background: #fee2e2;
+}
+
+.role-catalog-item-card.is-editing {
+  border-color: #0284c7;
+  background: #f0f9ff;
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15);
+}
+
+.catalog-inline-edit-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  width: 100%;
+}
+
+.inline-edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.inline-edit-field label {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #334155;
+  text-transform: uppercase;
+}
+
+.inline-edit-field .form-input,
+.inline-edit-field .form-textarea {
+  background: #ffffff;
+  font-size: 0.85rem;
+  padding: 0.4rem 0.65rem;
+  border: 1.5px solid #94a3b8;
+  border-radius: 6px;
+}
+
+.inline-edit-btns {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.inline-edit-btns .btn-sm {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border-radius: 6px;
 }
 
 .role-item-duties {
@@ -7258,6 +7345,36 @@ html, body {
   font-size: 0.82rem;
   font-weight: 600;
   color: #334155;
+  transition: all 0.15s ease;
+}
+
+.hour-chip.is-editing {
+  background: #f0f9ff;
+  border-color: #0284c7;
+  padding: 0.25rem 0.5rem;
+}
+
+.hour-chip-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.btn-edit-chip {
+  background: transparent;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 0.15rem;
+  border-radius: 50%;
+  transition: all 0.15s;
+}
+
+.btn-edit-chip:hover {
+  color: #0284c7;
+  background: #e0f2fe;
 }
 
 .btn-remove-chip {
@@ -7267,26 +7384,78 @@ html, body {
   cursor: pointer;
   display: flex;
   align-items: center;
-  padding: 0.1rem;
+  padding: 0.15rem;
   border-radius: 50%;
+  transition: all 0.15s;
 }
 
 .btn-remove-chip:hover {
   color: #ef4444;
+  background: #fee2e2;
+}
+
+.hour-chip-edit-form {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.hour-chip-inline-input {
+  width: 90px;
+  padding: 0.2rem 0.45rem !important;
+  font-size: 0.8rem !important;
+  height: 26px !important;
+  border: 1.5px solid #0284c7 !important;
+  border-radius: 4px !important;
+  background: #ffffff !important;
+}
+
+.btn-chip-action {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 0.2rem;
+  border-radius: 4px;
+}
+
+.btn-chip-action.save {
+  color: #16a34a;
+}
+.btn-chip-action.save:hover {
+  background: #dcfce7;
+}
+
+.btn-chip-action.cancel {
+  color: #64748b;
+}
+.btn-chip-action.cancel:hover {
+  background: #e2e8f0;
 }
 
 /* Time combo in program blocks */
 .time-select-combo {
   display: flex;
-  gap: 0.35rem;
+  gap: 0.4rem;
   align-items: center;
+  width: 100%;
+}
+
+.time-select-combo input.form-input,
+.time-select-combo .time-input-field {
+  flex: 1 1 125px;
+  min-width: 110px;
+  width: 100%;
 }
 
 .time-picker-dropdown {
+  flex: 0 0 auto;
   width: auto;
-  min-width: 105px;
-  padding: 0.45rem 0.5rem;
-  font-size: 0.78rem;
+  min-width: 88px;
+  max-width: 96px;
+  padding: 0.45rem 0.35rem;
+  font-size: 0.76rem;
   color: #475569;
 }
 
@@ -7579,6 +7748,184 @@ html, body {
   background: #fee2e2;
   border-color: #fca5a5;
   color: #b91c1c;
+}
+
+/* Global Admin Save Button & Toast */
+.btn-admin-save-all {
+  font-weight: 700 !important;
+  letter-spacing: 0.01em;
+  box-shadow: 0 2px 8px rgba(14, 165, 233, 0.25);
+  transition: all 0.25s ease !important;
+}
+
+.btn-success-saved {
+  background: #16a34a !important;
+  color: #ffffff !important;
+  border-color: #16a34a !important;
+  box-shadow: 0 0 12px rgba(22, 163, 74, 0.4) !important;
+}
+
+.admin-save-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999;
+  background: #0f172a;
+  color: #f8fafc;
+  border: 1px solid #22c55e;
+  padding: 0.85rem 1.4rem;
+  border-radius: var(--radius-md, 8px);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-weight: 600;
+  font-size: 0.92rem;
+  animation: adminToastSlide 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.admin-save-toast svg {
+  color: #22c55e;
+}
+
+@keyframes adminToastSlide {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* =========================================================
+   DEDICATED ADMIN PUBLISH & SAVE BANNER (GOOGLE SHEETS)
+   ========================================================= */
+.admin-publish-banner {
+  background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 50%, #f0fdfa 100%);
+  border: 1.5px solid #86efac;
+  border-radius: var(--radius-lg, 14px);
+  padding: 1.15rem 1.4rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.12);
+  transition: all 0.25s ease;
+}
+
+.admin-publish-banner:hover {
+  border-color: #4ade80;
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.18);
+}
+
+.publish-banner-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.publish-banner-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35);
+}
+
+.publish-banner-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #065f46;
+  letter-spacing: -0.01em;
+}
+
+.publish-banner-desc {
+  margin: 0.2rem 0 0;
+  font-size: 0.83rem;
+  color: #047857;
+  line-height: 1.4;
+  max-width: 620px;
+}
+
+/* El botón exclusivo de guardar cambios */
+.btn-publish-sheets {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  color: #ffffff !important;
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  padding: 0.85rem 1.85rem;
+  border-radius: 9999px; /* Forma de píldora redondeada distintiva */
+  border: 2px solid #34d399;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(5, 150, 105, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.btn-publish-sheets:hover:not(:disabled) {
+  background: linear-gradient(135deg, #047857 0%, #065f46 100%);
+  border-color: #6ee7b7;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(5, 150, 105, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.btn-publish-sheets:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(5, 150, 105, 0.3);
+}
+
+.btn-publish-sheets:disabled {
+  opacity: 0.85;
+  cursor: not-allowed;
+}
+
+.btn-publish-sheets.is-loading {
+  background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%);
+  border-color: #5eead4;
+}
+
+.btn-publish-sheets.is-success {
+  background: linear-gradient(135deg, #15803d 0%, #166534 100%);
+  border-color: #86efac;
+  box-shadow: 0 0 20px rgba(34, 197, 94, 0.5);
+  animation: pulseSuccess 0.4s ease;
+}
+
+@keyframes pulseSuccess {
+  0% { transform: scale(0.97); }
+  50% { transform: scale(1.03); }
+  100% { transform: scale(1); }
+}
+
+@media (max-width: 768px) {
+  .admin-publish-banner {
+    flex-direction: column;
+    align-items: stretch;
+    text-align: left;
+    padding: 1.1rem;
+    gap: 1rem;
+  }
+  .btn-publish-sheets {
+    width: 100%;
+    justify-content: center;
+    padding: 0.85rem 1.25rem;
+    font-size: 0.9rem;
+  }
 }
 
 

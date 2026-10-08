@@ -238,6 +238,15 @@ export const RefreshCw = ({ className = "w-5 h-5", size = 20 }) => (
   </svg>
 );
 
+export const CloudUpload = ({ className = "w-5 h-5", size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <polyline points="16 16 12 12 8 16"></polyline>
+    <line x1="12" y1="12" x2="12" y2="21"></line>
+    <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"></path>
+    <polyline points="16 16 12 12 8 16"></polyline>
+  </svg>
+);
+
 export const Shield = ({ className = "w-5 h-5", size = 20 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>

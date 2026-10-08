@@ -375,7 +375,7 @@ export default function ActivityDetailModal({
                 </div>
               )}
 
-              {/* Progress bar */}
+              {/* Progress bar (visible para todos: administradores y visitantes) */}
               <div className="program-progress-card">
                 <div className="progress-info-row">
                   <span className="progress-title">Progreso del Servicio en Vivo</span>
@@ -393,7 +393,7 @@ export default function ActivityDetailModal({
                   ) : (
                     <span>
                       <Lock size={12} style={{ display: 'inline', verticalAlign: '-1px', marginRight: '5px' }} />
-                      Solo el administrador puede tachar el progreso de este programa.
+                      Vista en tiempo real del culto (solo los administradores pueden marcar pasos).
                     </span>
                   )}
                 </span>
@@ -411,25 +411,30 @@ export default function ActivityDetailModal({
                       className={`program-step-card ${step.completed ? 'is-completed' : ''} ${!isAdminAuthenticated ? 'read-only' : ''}`}
                       onClick={isAdminAuthenticated ? () => toggleStepCompleted(idx) : undefined}
                     >
-                      <button 
-                        type="button"
-                        className={`step-check-btn ${!isAdminAuthenticated ? 'is-locked-btn' : ''}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleStepCompleted(idx);
-                        }}
-                        title={
-                          isAdminAuthenticated
-                            ? (step.completed ? 'Marcar como pendiente' : 'Marcar como completado')
-                            : 'Solo el administrador puede tachar este paso (clic para autenticarte)'
-                        }
-                      >
-                        {step.completed ? (
-                          <CheckSquare size={22} className="check-done" />
-                        ) : (
-                          <Square size={22} className="check-pending" />
-                        )}
-                      </button>
+                      {/* Casilla de check interactiva únicamente para administradores; estática si está lista para el resto */}
+                      {isAdminAuthenticated ? (
+                        <button 
+                          type="button"
+                          className="step-check-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleStepCompleted(idx);
+                          }}
+                          title={step.completed ? 'Marcar como pendiente' : 'Marcar como completado'}
+                        >
+                          {step.completed ? (
+                            <CheckSquare size={22} className="check-done" />
+                          ) : (
+                            <Square size={22} className="check-pending" />
+                          )}
+                        </button>
+                      ) : (
+                        step.completed ? (
+                          <div className="step-check-readonly" title="Paso completado">
+                            <CheckSquare size={20} className="check-done" />
+                          </div>
+                        ) : null
+                      )}
 
                       <div className="step-time-badge">
                         <Clock size={14} />
