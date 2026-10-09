@@ -6,3 +6,17 @@
   from = "/*"
   to = "/index.html"
   status = 200
+
+# Evita que el HTML y las rutas de la app se queden atrapadas en la caché del navegador
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    Pragma = "no-cache"
+    Expires = "0"
+
+# Los archivos empaquetados por Vite en /assets/ tienen un hash único, por lo que son seguros de cachear
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
