@@ -449,3 +449,27 @@ export function buildDateStr(year, monthShort, dayNumber) {
   const d = String(dayNumber || '1').padStart(2, '0');
   return `${y}-${m}-${d}`;
 }
+
+// 10. Líderes de Jóvenes autorizados para observaciones y retroalimentación de actividades
+// Alojados y sincronizados con Google Sheets
+export const YOUTH_LEADERS = [
+  'Fernando Pepén',
+  'Luisiana De Pepén',
+  'Joel Guzmán',
+  'Carmen De Guzmán',
+  'Joel Hernández',
+  'Marisol De Hernández',
+  'Elías Martes'
+];
+
+export const OBSERVATION_CATEGORIES = [
+  'General',
+  'Logística y Sonido',
+  'Alabanza y Música',
+  'Tiempos y Programa',
+  'Dinámica e Integración',
+  'Predicación y Mensaje',
+  'Refrigerio y Hospitalidad',
+  'Recepción y Asistencia'
+];
+

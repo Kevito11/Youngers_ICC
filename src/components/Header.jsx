@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { 
-  Calendar, Users, Settings, Plus, ExternalLink, 
+  Calendar, Users, UserCheck, Settings, Plus, ExternalLink, 
   Lock, Archive, LogOut, ChevronLeft, ChevronRight 
 } from './Icons';
 import youngersLogo from '../assets/youngers-logo.jpg';
@@ -276,6 +276,17 @@ export default function Header({
               <span className="desktop-inline">Servidores &amp; Líderes</span>
               <span className="mobile-inline">Servidores</span>
               <span className="nav-counter-pill">{serversCount}</span>
+            </a>
+
+            <a 
+              href="/mi-participacion" 
+              className={`nav-tab-btn participacion-tab ${currentTab === 'participacion' ? 'active' : ''}`}
+              onClick={(e) => handleTabClick(e, 'participacion')}
+              title="Mi Participación y Deberes en las Actividades"
+            >
+              <UserCheck size={18} />
+              <span className="desktop-inline">Mi Participación</span>
+              <span className="mobile-inline">Mi Rol</span>
             </a>
 
             <a 

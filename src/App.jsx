@@ -4,6 +4,7 @@ import GeneralCalendarView from './components/GeneralCalendarView';
 import TimelineVisual from './components/TimelineVisual';
 import ActivityDetailModal from './components/ActivityDetailModal';
 import ServersDirectory from './components/ServersDirectory';
+import ServerParticipationView from './components/ServerParticipationView';
 import AdminPanel from './components/AdminPanel';
 import PeriodsHistoryView from './components/PeriodsHistoryView';
 import FooterNotes from './components/FooterNotes';
@@ -43,6 +44,7 @@ const pathToTab = (pathname) => {
   if (p === '/siervos') return 'siervos';
   if (p === '/periodos' || p === '/historial') return 'periodos';
   if (p === '/servidores' || p === '/servers') return 'servers';
+  if (p === '/mi-participacion' || p === '/participacion' || p === '/mis-tareas') return 'participacion';
   if (p === '/admin' || p === '/administrador') return 'admin';
   return 'general'; // Default for '/', '/calendario', '/general'
 };
@@ -53,6 +55,7 @@ const tabToPath = (tab) => {
     case 'siervos': return '/siervos';
     case 'periodos': return '/periodos';
     case 'servers': return '/servidores';
+    case 'participacion': return '/mi-participacion';
     case 'admin': return '/admin';
     default: return '/';
   }
@@ -375,14 +378,26 @@ export default function App() {
     setSelectedActivity(null);
   };
 
-  // Update activity (e.g. check off program items in live view - Only Admin)
-  const handleUpdateActivity = (updatedAct) => {
-    const isAuth = isAdminAuthenticated || sessionStorage.getItem('youngers_admin_auth_v1') === 'true';
-    if (!isAuth) return;
+  // Update activity (e.g. check off program items in live view, update observations)
+  const handleUpdateActivity = async (updatedAct) => {
     const nextList = activities.map(a => a.id === updatedAct.id ? updatedAct : a);
     setActivities(nextList);
     setSelectedActivity(updatedAct);
     saveStoredActivities(nextList);
+
+    // Enviar y persistir en Google Sheets en segundo plano
+    try {
+      await syncToGoogleSheets(nextList, servers, {
+        announcements,
+        isProgramLocked,
+        lockedMessage,
+        rolesCatalog,
+        hoursCatalog,
+        serviceAreasCatalog
+      });
+    } catch (err) {
+      console.warn('Guardado localmente, pendiente sincronización con Google Sheets:', err.message);
+    }
   };
 
   // Jump to Admin to edit (Protected by password)
@@ -622,6 +637,14 @@ export default function App() {
                 onDeleteServer={handleDeleteServer}
                 onRequireAuth={requireModificationAuth}
                 isAdminAuthenticated={isAdminAuthenticated}
+              />
+            )}
+
+            {currentTab === 'participacion' && (
+              <ServerParticipationView
+                activities={activities}
+                servers={servers}
+                onSelectActivity={handleSelectActivity}
               />
             )}
 

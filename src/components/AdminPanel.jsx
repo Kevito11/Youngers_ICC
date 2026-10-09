@@ -2,11 +2,12 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Plus, Edit3, Trash2, MapPin, Check, X,
   Lock, Unlock, Key, AlertCircle, ArrowLeft, Calendar,
-  ChevronLeft, ChevronRight, Search, LayoutGrid, List,
-  CloudUpload, RefreshCw, Sparkles, Copy
+  ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Search, LayoutGrid, List,
+  CloudUpload, RefreshCw, Sparkles, Copy, Minimize2, Maximize2, MessageSquare
 } from './Icons';
 import UnsavedChangesModal from './UnsavedChangesModal';
 import SmartProgramImporterModal from './SmartProgramImporterModal';
+import ActivityObservationsSection from './ActivityObservationsSection';
 import {
   GROUPS_CATALOG,
   LOCATIONS_CATALOG,
@@ -154,11 +155,94 @@ export default function AdminPanel({
   const lockedActivitiesCount = activities.filter(a => a.isProgramLocked).length;
 
   // Activities Table View & Pagination
-  const [pageSize, setPageSize] = useState('5'); // '5' | '10' | '15' | '20' | 'all'
+  const PAGE_SIZE_OPTIONS = ['2', '3', '5', '10', '15', '20', 'all'];
+  const [pageSize, setPageSize] = useState(() => {
+    try {
+      return localStorage.getItem('youngers_admin_pagesize') || '5';
+    } catch (e) {
+      return '5';
+    }
+  });
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [groupFilter, setGroupFilter] = useState('all'); // 'all' | 'jotapece' | 'siervos' | 'ambos'
   const [viewMode, setViewMode] = useState('cards'); // 'cards' | 'table'
+
+  // Compact / Compressed view mode for activities
+  const [isCompactView, setIsCompactView] = useState(() => {
+    try {
+      return localStorage.getItem('youngers_admin_compact_view') === 'true';
+    } catch (e) {
+      return false;
+    }
+  });
+  const [expandedCardIds, setExpandedCardIds] = useState(new Set());
+
+  // Collapsible sections for Activity Editor Modal
+  const [collapsedSections, setCollapsedSections] = useState({
+    1: false,
+    2: false,
+    3: false,
+    4: false,
+    5: false
+  });
+
+  const handlePageSizeChange = (opt) => {
+    setPageSize(opt);
+    setCurrentPage(1);
+    try {
+      localStorage.setItem('youngers_admin_pagesize', opt);
+    } catch (e) {}
+  };
+
+  const handleToggleCompactView = () => {
+    setIsCompactView(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('youngers_admin_compact_view', String(next));
+      } catch (e) {}
+      return next;
+    });
+  };
+
+  const toggleCardExpansion = (actId, e) => {
+    if (e) e.stopPropagation();
+    setExpandedCardIds(prev => {
+      const next = new Set(prev);
+      if (next.has(actId)) {
+        next.delete(actId);
+      } else {
+        next.add(actId);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleExpandAll = () => {
+    if (expandedCardIds.size === displayedActivities.length) {
+      setExpandedCardIds(new Set());
+    } else {
+      setExpandedCardIds(new Set(displayedActivities.map(a => a.id)));
+    }
+  };
+
+  const toggleEditorSection = (secNum) => {
+    setCollapsedSections(prev => ({
+      ...prev,
+      [secNum]: !prev[secNum]
+    }));
+  };
+
+  const handleToggleAllEditorSections = () => {
+    const allCollapsed = Object.values(collapsedSections).every(Boolean);
+    setCollapsedSections({
+      1: !allCollapsed,
+      2: !allCollapsed,
+      3: !allCollapsed,
+      4: !allCollapsed,
+      5: !allCollapsed
+    });
+  };
 
   // Roles Catalog View & Pagination
   const [rolesPageSize, setRolesPageSize] = useState('5'); // '5' | '10' | '15' | 'all'
@@ -1036,7 +1120,16 @@ export default function AdminPanel({
                   </span>
                   <h3 className="editor-heading">{editingActivity.title || 'Sin título'}</h3>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={handleToggleAllEditorSections}
+                    title={Object.values(collapsedSections).some(Boolean) ? "Desplegar todas las secciones del formulario" : "Comprimir todas las secciones del formulario"}
+                  >
+                    {Object.values(collapsedSections).some(Boolean) ? <Maximize2 size={14} /> : <Minimize2 size={14} />}
+                    <span>{Object.values(collapsedSections).some(Boolean) ? 'Expandir Secciones' : 'Comprimir Secciones'}</span>
+                  </button>
                   <button 
                     type="button" 
                     className="btn btn-primary btn-sm"
@@ -1059,9 +1152,21 @@ export default function AdminPanel({
 
           <form onSubmit={handleSaveCurrentActivity} className="editor-form">
             {/* Section 1: Basic Information */}
-            <div className="form-section-box">
-              <h4 className="section-title">1. Información General</h4>
-              <div className="form-grid">
+            <div className={`form-section-box ${collapsedSections[1] ? 'is-section-collapsed' : ''}`}>
+              <div 
+                className="section-collapsible-header"
+                onClick={() => toggleEditorSection(1)}
+                role="button"
+                tabIndex={0}
+                title={collapsedSections[1] ? "Desplegar sección" : "Comprimir sección"}
+              >
+                <h4 className="section-title">1. Información General</h4>
+                <button type="button" className="btn-section-toggle" aria-label="Alternar sección">
+                  {collapsedSections[1] ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+                </button>
+              </div>
+              {!collapsedSections[1] && (
+                <div className="form-grid">
                 <div className="form-group full-width">
                   <label>Título de la Actividad / Serie *</label>
                   <input 
@@ -1335,25 +1440,41 @@ export default function AdminPanel({
                   </p>
                 </div>
               </div>
+              )}
             </div>
 
             {/* Section 2: Schedules */}
-            <div className="form-section-box">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.85rem' }}>
-                <h4 className="section-title" style={{ margin: 0 }}>2. Horarios de Logística</h4>
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => applyStandardSchedule(editingActivity.group)}
-                  title="Cargar los horarios habituales de montaje, culto y desmontaje para este grupo"
-                >
-                  ⚡ Cargar Horario Habitual ({editingActivity.group === 'jotapece' ? 'Jotapece' : editingActivity.group === 'siervos' ? 'Siervos' : 'Ambos'})
+            <div className={`form-section-box ${collapsedSections[2] ? 'is-section-collapsed' : ''}`}>
+              <div 
+                className="section-collapsible-header"
+                onClick={() => toggleEditorSection(2)}
+                role="button"
+                tabIndex={0}
+                title={collapsedSections[2] ? "Desplegar sección" : "Comprimir sección"}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                  <h4 className="section-title" style={{ margin: 0 }}>2. Horarios de Logística</h4>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-xs"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      applyStandardSchedule(editingActivity.group);
+                    }}
+                    title="Cargar los horarios habituales de montaje, culto y desmontaje para este grupo"
+                  >
+                    ⚡ Cargar Habitual ({editingActivity.group === 'jotapece' ? 'Jotapece' : editingActivity.group === 'siervos' ? 'Siervos' : 'Ambos'})
+                  </button>
+                </div>
+                <button type="button" className="btn-section-toggle" aria-label="Alternar sección">
+                  {collapsedSections[2] ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
                 </button>
               </div>
-              <div className="form-grid">
+              {!collapsedSections[2] && (
+                <div className="form-grid">
                 <div className="form-group">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
-                    <label style={{ margin: 0 }}>Horario de Montaje / Preparación</label>
+                  <div className="field-label-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                    <label style={{ margin: 0, fontWeight: 700 }}>Montaje / Preparación</label>
                     {editingActivity.prepTime && (
                       <button
                         type="button"
@@ -1365,44 +1486,35 @@ export default function AdminPanel({
                       </button>
                     )}
                   </div>
-                  <select 
-                    value={
-                      PREP_TIME_OPTIONS.some(o => o.value === editingActivity.prepTime)
-                        ? editingActivity.prepTime
-                        : (editingActivity.prepTime ? '__custom__' : '')
-                    }
-                    onChange={e => {
-                      const val = e.target.value;
-                      if (val !== '__custom__') {
-                        setEditingActivity({ ...editingActivity, prepTime: val });
-                      }
-                    }}
-                    className="form-select"
-                  >
-                    <option value="">-- Seleccionar horario de montaje --</option>
-                    {PREP_TIME_OPTIONS.map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                    {editingActivity.prepTime && !PREP_TIME_OPTIONS.some(o => o.value === editingActivity.prepTime) && (
-                      <option value="__custom__">📌 Actual: {editingActivity.prepTime}</option>
-                    )}
-                    <option value="__custom__">✍️ Escribir horario personalizado...</option>
-                  </select>
-                  {(!PREP_TIME_OPTIONS.some(o => o.value === editingActivity.prepTime) || editingActivity.prepTime === '') && (
+                  <div className="schedule-combo-box">
                     <input 
                       type="text" 
                       value={editingActivity.prepTime || ''}
                       onChange={e => setEditingActivity({ ...editingActivity, prepTime: e.target.value })}
-                      placeholder="O escribe horario personalizado..."
-                      className="form-input"
-                      style={{ marginTop: '0.45rem' }}
+                      placeholder="Ej. 5:00 – 7:00 pm"
+                      className="form-input schedule-input"
                     />
-                  )}
+                    <select 
+                      value=""
+                      onChange={e => {
+                        if (e.target.value) {
+                          setEditingActivity({ ...editingActivity, prepTime: e.target.value });
+                        }
+                      }}
+                      className="form-select schedule-dropdown"
+                      title="Cargar horario predefinido"
+                    >
+                      <option value="">⏱️ Opciones...</option>
+                      {PREP_TIME_OPTIONS.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
                 <div className="form-group">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
-                    <label style={{ margin: 0 }}>Horario del Culto / Actividad</label>
+                  <div className="field-label-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                    <label style={{ margin: 0, fontWeight: 700 }}>Culto / Actividad</label>
                     {editingActivity.activityTime && (
                       <button
                         type="button"
@@ -1414,44 +1526,35 @@ export default function AdminPanel({
                       </button>
                     )}
                   </div>
-                  <select 
-                    value={
-                      ACTIVITY_TIME_OPTIONS.some(o => o.value === editingActivity.activityTime)
-                        ? editingActivity.activityTime
-                        : (editingActivity.activityTime ? '__custom__' : '')
-                    }
-                    onChange={e => {
-                      const val = e.target.value;
-                      if (val !== '__custom__') {
-                        setEditingActivity({ ...editingActivity, activityTime: val });
-                      }
-                    }}
-                    className="form-select"
-                  >
-                    <option value="">-- Seleccionar horario del culto --</option>
-                    {ACTIVITY_TIME_OPTIONS.map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                    {editingActivity.activityTime && !ACTIVITY_TIME_OPTIONS.some(o => o.value === editingActivity.activityTime) && (
-                      <option value="__custom__">📌 Actual: {editingActivity.activityTime}</option>
-                    )}
-                    <option value="__custom__">✍️ Escribir horario personalizado...</option>
-                  </select>
-                  {(!ACTIVITY_TIME_OPTIONS.some(o => o.value === editingActivity.activityTime) || editingActivity.activityTime === '') && (
+                  <div className="schedule-combo-box">
                     <input 
                       type="text" 
                       value={editingActivity.activityTime || ''}
                       onChange={e => setEditingActivity({ ...editingActivity, activityTime: e.target.value })}
-                      placeholder="O escribe horario personalizado..."
-                      className="form-input"
-                      style={{ marginTop: '0.45rem' }}
+                      placeholder="Ej. 7:00 – 9:00 pm"
+                      className="form-input schedule-input"
                     />
-                  )}
+                    <select 
+                      value=""
+                      onChange={e => {
+                        if (e.target.value) {
+                          setEditingActivity({ ...editingActivity, activityTime: e.target.value });
+                        }
+                      }}
+                      className="form-select schedule-dropdown"
+                      title="Cargar horario predefinido"
+                    >
+                      <option value="">⏱️ Opciones...</option>
+                      {ACTIVITY_TIME_OPTIONS.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
                 <div className="form-group">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
-                    <label style={{ margin: 0 }}>Horario de Desmontaje</label>
+                  <div className="field-label-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                    <label style={{ margin: 0, fontWeight: 700 }}>Desmontaje</label>
                     {editingActivity.teardownTime && (
                       <button
                         type="button"
@@ -1463,39 +1566,30 @@ export default function AdminPanel({
                       </button>
                     )}
                   </div>
-                  <select 
-                    value={
-                      TEARDOWN_TIME_OPTIONS.some(o => o.value === editingActivity.teardownTime)
-                        ? editingActivity.teardownTime
-                        : (editingActivity.teardownTime ? '__custom__' : '')
-                    }
-                    onChange={e => {
-                      const val = e.target.value;
-                      if (val !== '__custom__') {
-                        setEditingActivity({ ...editingActivity, teardownTime: val });
-                      }
-                    }}
-                    className="form-select"
-                  >
-                    <option value="">-- Seleccionar horario de desmontaje --</option>
-                    {TEARDOWN_TIME_OPTIONS.map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                    {editingActivity.teardownTime && !TEARDOWN_TIME_OPTIONS.some(o => o.value === editingActivity.teardownTime) && (
-                      <option value="__custom__">📌 Actual: {editingActivity.teardownTime}</option>
-                    )}
-                    <option value="__custom__">✍️ Escribir horario personalizado...</option>
-                  </select>
-                  {(!TEARDOWN_TIME_OPTIONS.some(o => o.value === editingActivity.teardownTime) || editingActivity.teardownTime === '') && (
+                  <div className="schedule-combo-box">
                     <input 
                       type="text" 
                       value={editingActivity.teardownTime || ''}
                       onChange={e => setEditingActivity({ ...editingActivity, teardownTime: e.target.value })}
-                      placeholder="O escribe horario personalizado..."
-                      className="form-input"
-                      style={{ marginTop: '0.45rem' }}
+                      placeholder="Ej. 9:00 – 9:30 pm"
+                      className="form-input schedule-input"
                     />
-                  )}
+                    <select 
+                      value=""
+                      onChange={e => {
+                        if (e.target.value) {
+                          setEditingActivity({ ...editingActivity, teardownTime: e.target.value });
+                        }
+                      }}
+                      className="form-select schedule-dropdown"
+                      title="Cargar horario predefinido"
+                    >
+                      <option value="">⏱️ Opciones...</option>
+                      {TEARDOWN_TIME_OPTIONS.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
                 <div className="form-group full-width">
@@ -1509,36 +1603,53 @@ export default function AdminPanel({
                   />
                 </div>
               </div>
+              )}
             </div>
 
             {/* Section 3: Step-by-Step Program Builder */}
-            <div className="form-section-box">
-              <div className="section-header-flex">
+            <div className={`form-section-box ${collapsedSections[3] ? 'is-section-collapsed' : ''}`}>
+              <div 
+                className="section-collapsible-header"
+                onClick={() => toggleEditorSection(3)}
+                role="button"
+                tabIndex={0}
+                title={collapsedSections[3] ? "Desplegar sección" : "Comprimir sección"}
+              >
                 <div>
-                  <h4 className="section-title">3. Programa Minuto a Minuto ({editingActivity.program?.length || 0} pasos)</h4>
-                  <p className="section-desc">Selecciona bloques predefinidos de la lista o escribe actividades personalizadas con su descripción.</p>
+                  <h4 className="section-title" style={{ margin: 0 }}>3. Programa Minuto a Minuto ({editingActivity.program?.length || 0} pasos)</h4>
                 </div>
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
                   <button 
                     type="button" 
-                    className="btn btn-primary btn-sm"
+                    className="btn btn-primary btn-xs"
                     onClick={() => setShowSmartImporter(true)}
                     title="Pega texto del programa para autocompletar bloques, horarios y encargados"
                     style={{ background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)', border: 'none', color: '#fff' }}
                   >
-                    <Sparkles size={16} />
-                    <span>Importador Inteligente</span>
+                    <Sparkles size={14} />
+                    <span>Importador</span>
                   </button>
                   <button 
                     type="button" 
-                    className="btn btn-secondary btn-sm"
+                    className="btn btn-secondary btn-xs"
                     onClick={addProgramStep}
                   >
-                    <Plus size={16} />
+                    <Plus size={14} />
                     <span>Agregar Bloque</span>
+                  </button>
+                  <button 
+                    type="button" 
+                    className="btn-section-toggle"
+                    onClick={() => toggleEditorSection(3)}
+                    aria-label="Alternar sección"
+                  >
+                    {collapsedSections[3] ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
                   </button>
                 </div>
               </div>
+              {!collapsedSections[3] && (
+                <>
+                  <p className="section-desc" style={{ marginTop: '0.4rem' }}>Selecciona bloques predefinidos de la lista o escribe actividades personalizadas con su descripción.</p>
 
               <div className="program-steps-editor-list">
                 {(editingActivity.program || []).map((step, idx) => (
@@ -1767,28 +1878,47 @@ export default function AdminPanel({
                   <option key={hIdx} value={h} />
                 ))}
               </datalist>
+                </>
+              )}
             </div>
 
             {/* Section 4: Server Roles & Assigned Persons */}
-            <div className="form-section-box">
-              <div className="section-header-flex">
+            <div className={`form-section-box ${collapsedSections[4] ? 'is-section-collapsed' : ''}`}>
+              <div 
+                className="section-collapsible-header"
+                onClick={() => toggleEditorSection(4)}
+                role="button"
+                tabIndex={0}
+                title={collapsedSections[4] ? "Desplegar sección" : "Comprimir sección"}
+              >
                 <div>
-                  <h4 className="section-title">4. Servidores y Responsabilidades Asignadas</h4>
-                  <p className="section-desc">
+                  <h4 className="section-title" style={{ margin: 0 }}>4. Servidores y Responsabilidades Asignadas ({editingActivity.serverAssignments?.length || 0})</h4>
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary btn-xs"
+                    onClick={() => addServerRole()}
+                  >
+                    <Plus size={14} />
+                    <span>Asignar Servidor</span>
+                  </button>
+                  <button 
+                    type="button" 
+                    className="btn-section-toggle"
+                    onClick={() => toggleEditorSection(4)}
+                    aria-label="Alternar sección"
+                  >
+                    {collapsedSections[4] ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+                  </button>
+                </div>
+              </div>
+              {!collapsedSections[4] && (
+                <>
+                  <p className="section-desc" style={{ marginTop: '0.4rem' }}>
                     Selecciona el rol de la lista para cargar su descripción automáticamente. Un servidor puede tener más de un rol asignado.
                   </p>
-                </div>
-                <button 
-                  type="button" 
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => addServerRole()}
-                >
-                  <Plus size={16} />
-                  <span>Asignar Servidor</span>
-                </button>
-              </div>
-
-              <div className="server-roles-editor-list">
+                  <div className="server-roles-editor-list">
                 {(editingActivity.serverAssignments || []).map((asg, idx) => (
                   <div key={idx} className="server-role-edit-card">
                     <div className="role-edit-top-row">
@@ -1895,6 +2025,45 @@ export default function AdminPanel({
                   </div>
                 ))}
               </div>
+                </>
+              )}
+            </div>
+
+            {/* Section 5: Youth Leaders Observations (Google Sheets) */}
+            <div className={`form-section-box ${collapsedSections[5] ? 'is-section-collapsed' : ''}`}>
+              <div 
+                className="section-collapsible-header"
+                onClick={() => toggleEditorSection(5)}
+                role="button"
+                tabIndex={0}
+                title={collapsedSections[5] ? "Desplegar sección" : "Comprimir sección"}
+              >
+                <div>
+                  <h4 className="section-title" style={{ margin: 0 }}>
+                    5. Observaciones de Líderes de Jóvenes ({editingActivity.observations?.length || 0})
+                  </h4>
+                  <p className="section-desc" style={{ marginTop: '0.2rem', marginBottom: 0 }}>
+                    Registro de sugerencias y retroalimentación de Fernando Pepén, Luisiana, Joel Guzmán, Carmen, Joel Hernández, Marisol y Elías Martes. Sincronizado en Sheet.
+                  </p>
+                </div>
+                <button 
+                  type="button" 
+                  className="btn-section-toggle"
+                  onClick={() => toggleEditorSection(5)}
+                  aria-label="Alternar sección"
+                >
+                  {collapsedSections[5] ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+                </button>
+              </div>
+              {!collapsedSections[5] && (
+                <div style={{ marginTop: '1rem' }}>
+                  <ActivityObservationsSection
+                    activity={editingActivity}
+                    onUpdateActivity={(updated) => setEditingActivity(updated)}
+                    isAdmin={true}
+                  />
+                </div>
+              )}
             </div>
 
             {/* Form Save Button */}
@@ -1983,20 +2152,41 @@ export default function AdminPanel({
               </button>
             </div>
 
-            {/* Limit selector */}
+            {/* Density / Compression Mode Toggle: Comprimir vistas */}
+            <div className="admin-density-toggle-group" title="Comprimir o expandir vista de actividades">
+              <button
+                type="button"
+                className={`admin-view-toggle-btn btn-density-toggle ${isCompactView ? 'active' : ''}`}
+                onClick={handleToggleCompactView}
+                title={isCompactView ? "Vista Comprimida activada. Haz clic para ver vista detallada" : "Haz clic para comprimir las vistas y ver más actividades compactadas"}
+              >
+                {isCompactView ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+                <span>{isCompactView ? 'Comprimida' : 'Detallada'}</span>
+              </button>
+              {isCompactView && viewMode === 'cards' && (
+                <button
+                  type="button"
+                  className="admin-view-toggle-btn btn-expand-all"
+                  onClick={handleToggleExpandAll}
+                  title={expandedCardIds.size === displayedActivities.length ? "Plegar detalles de todas" : "Desplegar detalles de todas"}
+                >
+                  {expandedCardIds.size === displayedActivities.length ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  <span>{expandedCardIds.size === displayedActivities.length ? 'Plegar todo' : 'Desplegar todo'}</span>
+                </button>
+              )}
+            </div>
+
+            {/* Limit selector: 2, 3, 5, 10, 15, 20, Todas */}
             <div className="page-limit-selector" title="Cantidad de actividades a mostrar">
-              <span className="limit-selector-label">Ver:</span>
+              <span className="limit-selector-label">Mostrar:</span>
               <div className="limit-pills-group">
-                {['5', '10', '15', '20', 'all'].map(opt => (
+                {PAGE_SIZE_OPTIONS.map(opt => (
                   <button
                     key={opt}
                     type="button"
                     className={`limit-pill-btn ${pageSize === opt ? 'active' : ''}`}
-                    onClick={() => {
-                      setPageSize(opt);
-                      setCurrentPage(1);
-                    }}
-                    title={opt === 'all' ? 'Ver todas las actividades' : `Ver ${opt} actividades por página`}
+                    onClick={() => handlePageSizeChange(opt)}
+                    title={opt === 'all' ? 'Ver todas las actividades' : `Mostrar ${opt} actividades por página`}
                   >
                     {opt === 'all' ? 'Todas' : opt}
                   </button>
@@ -2057,7 +2247,7 @@ export default function AdminPanel({
 
         {/* Activities Display: Cards (Mobile friendly default) vs Table */}
         {viewMode === 'cards' ? (
-          <div className="admin-activities-cards-list">
+          <div className={`admin-activities-cards-list ${isCompactView ? 'is-compact-mode' : ''}`}>
             {displayedActivities.length === 0 ? (
               <div className="empty-state-box">
                 <p>No se encontraron actividades con los filtros seleccionados.</p>
@@ -2069,6 +2259,161 @@ export default function AdminPanel({
                 let groupBorderClass = 'border-ambos';
                 if (isJpc) groupBorderClass = 'border-jpc';
                 if (isSiervos) groupBorderClass = 'border-siervos';
+                const isExpanded = expandedCardIds.has(act.id);
+
+                if (isCompactView) {
+                  return (
+                    <div
+                      key={act.id}
+                      className={`admin-activity-card compact-activity-card ${groupBorderClass} ${isExpanded ? 'is-expanded' : ''}`}
+                      onClick={() => handleStartEdit(act)}
+                      role="button"
+                      tabIndex={0}
+                      title="Haz clic para entrar y editar esta actividad"
+                    >
+                      <div className="compact-card-main-bar">
+                        {/* Compact Date Badge */}
+                        <div className="compact-date-badge">
+                          <span className="compact-date-dow">{act.dayOfWeek}</span>
+                          <span className="compact-date-day">{act.dayNumber} {act.month}</span>
+                        </div>
+
+                        {/* Title and metadata */}
+                        <div className="compact-card-info-col">
+                          <div className="compact-card-top-row">
+                            <span className="compact-card-title">{act.title}</span>
+                            <span className={`group-pill-sm ${isJpc ? 'pill-jpc' : isSiervos ? 'pill-siervos' : 'pill-ambos'}`}>
+                              {isJpc ? 'Jotapece' : isSiervos ? 'Siervos' : 'Ambos'}
+                            </span>
+                            {act.preacher && act.preacher !== 'Sin predicación' && (
+                              <span className="compact-preacher-badge" title="Mensaje / Predicador">
+                                🗣️ {act.preacher}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="compact-card-tags-row">
+                            <span className={`location-pill-sm tag-${act.locationType}`}>
+                              📍 {act.customLocationName || act.location}
+                            </span>
+                            <span className="compact-meta-chip">
+                              📋 {act.program?.length || 0} pasos
+                            </span>
+                            <span className="compact-meta-chip">
+                              👥 {act.serverAssignments?.length || 0} servidores
+                            </span>
+                            {act.observations?.length > 0 && (
+                              <span className="compact-meta-chip obs-meta-chip" title={`${act.observations.length} observaciones registradas de líderes`}>
+                                💬 {act.observations.length} obs
+                              </span>
+                            )}
+                            {act.activityTime && (
+                              <span className="compact-meta-chip">
+                                ⏰ {act.activityTime}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Compact actions buttons */}
+                        <div className="compact-card-actions-row" onClick={e => e.stopPropagation()}>
+                          <button 
+                            type="button"
+                            className={`btn-table-lock-toggle btn-compact-lock ${act.isProgramLocked ? 'is-locked' : 'is-unlocked'}`}
+                            onClick={() => onToggleActivityLock && onToggleActivityLock(act.id)}
+                            title={act.isProgramLocked ? "El programa de esta fecha está bloqueado para visitantes. Haz clic para desbloquearlo." : "El programa de esta fecha es público. Haz clic para bloquearlo."}
+                          >
+                            {act.isProgramLocked ? <Lock size={13} /> : <Unlock size={13} />}
+                            <span className="compact-lock-label">{act.isProgramLocked ? 'Bloqueado' : 'Público'}</span>
+                          </button>
+
+                          <button 
+                            type="button"
+                            className="btn-table-action btn-compact-action btn-edit-card"
+                            onClick={() => handleStartEdit(act)}
+                            title="Entrar y modificar actividad"
+                          >
+                            <Edit3 size={14} />
+                            <span>Editar</span>
+                          </button>
+
+                          <button 
+                            type="button"
+                            className="btn-table-action btn-compact-action btn-danger"
+                            onClick={() => handleDeleteActivity(act)}
+                            title="Eliminar actividad"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+
+                          <button
+                            type="button"
+                            className={`btn-compact-expand-toggle ${isExpanded ? 'active' : ''}`}
+                            onClick={(e) => toggleCardExpansion(act.id, e)}
+                            title={isExpanded ? "Plegar detalles de esta actividad" : "Desplegar detalles de esta actividad"}
+                          >
+                            {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Expandable accordion drawer */}
+                      {isExpanded && (
+                        <div className="compact-card-drawer" onClick={e => e.stopPropagation()}>
+                          <div className="compact-drawer-grid">
+                            <div className="compact-drawer-section">
+                              <span className="drawer-label">⏰ Horarios de Logística:</span>
+                              <div className="drawer-schedule-pills">
+                                <span>🛠️ Montaje: <strong>{act.prepTime || 'N/A'}</strong></span>
+                                <span>⛪ Culto: <strong>{act.activityTime || 'N/A'}</strong></span>
+                                <span>📦 Desmontaje: <strong>{act.teardownTime || 'N/A'}</strong></span>
+                              </div>
+                            </div>
+
+                            {act.serverAssignments?.length > 0 && (
+                              <div className="compact-drawer-section">
+                                <span className="drawer-label">👥 Servidores Asignados ({act.serverAssignments.length}):</span>
+                                <div className="drawer-servers-flow">
+                                  {act.serverAssignments.map((sa, idx) => (
+                                    <span key={idx} className="drawer-server-tag">
+                                      <strong>{sa.serverName}</strong>: {sa.role}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {act.program?.length > 0 && (
+                              <div className="compact-drawer-section">
+                                <span className="drawer-label">📋 Resumen del Programa ({act.program.length} bloques):</span>
+                                <div className="drawer-program-flow">
+                                  {act.program.map((step, idx) => (
+                                    <span key={idx} className="drawer-step-tag">
+                                      <code>{step.time}</code> {step.blockName} {step.responsible ? `(${step.responsible})` : ''}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {act.observations?.length > 0 && (
+                              <div className="compact-drawer-section">
+                                <span className="drawer-label">💬 Observaciones de Líderes ({act.observations.length}):</span>
+                                <div className="drawer-obs-flow">
+                                  {act.observations.map((obs, idx) => (
+                                    <div key={idx} className="drawer-obs-pill">
+                                      <strong>{(Array.isArray(obs.leaders) ? obs.leaders.join(', ') : obs.leaders)}:</strong> "{obs.comment}"
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
 
                 return (
                   <div
@@ -2162,7 +2507,7 @@ export default function AdminPanel({
           </div>
         ) : (
           <div className="table-responsive">
-            <table className="admin-table">
+            <table className={`admin-table ${isCompactView ? 'is-compact-table' : ''}`}>
               <thead>
                 <tr>
                   <th>Fecha</th>

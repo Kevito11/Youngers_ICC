@@ -3,8 +3,9 @@ import {
   X, Calendar, Clock, MapPin, User, CheckSquare, Square, 
   Copy, Check, Share2, Printer, Edit3, BookOpen, Music, 
   Monitor, Mic, Coffee, HeartHandshake, Shield, ExternalLink, Navigation,
-  Lock, Unlock, Key, Users, List, LayoutGrid
+  Lock, Unlock, Key, Users, List, LayoutGrid, MessageSquare
 } from './Icons';
+import ActivityObservationsSection from './ActivityObservationsSection';
 
 export default function ActivityDetailModal({ 
   activity, 
@@ -234,12 +235,14 @@ export default function ActivityDetailModal({
               >
                 {isProgramLocked ? (
                   <>
-                    <Lock size={13} style={{ marginRight: 5, verticalAlign: 'middle' }} />
-                    <span>Programa (Bloqueado)</span>
+                    <Lock size={13} style={{ flexShrink: 0 }} />
+                    <span className="desktop-inline">Programa (Bloqueado)</span>
+                    <span className="mobile-inline">Programa</span>
                   </>
                 ) : (
                   <>
-                    <span>Programa ({localProgram.length})</span>
+                    <span className="desktop-inline">Programa ({localProgram.length})</span>
+                    <span className="mobile-inline">Programa ({localProgram.length})</span>
                     {localProgram.length > 0 && (
                       <span className="tab-progress-tag">{progressPercent}%</span>
                     )}
@@ -252,6 +255,14 @@ export default function ActivityDetailModal({
               >
                 <span className="desktop-inline">Servidores &amp; Responsabilidades ({activity.serverAssignments?.length || 0})</span>
                 <span className="mobile-inline">Servidores ({activity.serverAssignments?.length || 0})</span>
+              </button>
+              <button 
+                className={`modal-tab-btn ${activeTab === 'observations' ? 'active' : ''}`}
+                onClick={() => setActiveTab('observations')}
+              >
+                <MessageSquare size={13} style={{ flexShrink: 0 }} />
+                <span className="desktop-inline">Observaciones ({activity.observations?.length || 0})</span>
+                <span className="mobile-inline">Obs. ({activity.observations?.length || 0})</span>
               </button>
             </div>
 
@@ -557,6 +568,14 @@ export default function ActivityDetailModal({
                 </div>
               )}
             </div>
+          )}
+
+          {activeTab === 'observations' && (
+            <ActivityObservationsSection
+              activity={activity}
+              onUpdateActivity={onUpdateActivity}
+              isAdmin={isAdminAuthenticated}
+            />
           )}
         </div>
 

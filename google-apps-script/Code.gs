@@ -17,7 +17,8 @@ const SHEETS = {
   SERVERS: 'Servidores',
   LOCATIONS: 'Lugares',
   CATALOG_BLOCKS: 'BloquesCatalogo',
-  CONFIG: 'Configuracion'
+  CONFIG: 'Configuracion',
+  OBSERVATIONS: 'ObservacionesLideres'
 };
 
 /**
@@ -35,7 +36,7 @@ function setupSheets() {
     'Título / Serie', 'Predicador', 'Lugar', 'Tipo Ubicación', 'Es Sede Externa', 
     'Lugar Externo', 'Dirección Externa', 'GPS Map URL', 'Notas Transporte', 
     'Horario Montaje', 'Horario Culto', 'Horario Desmontaje', 'Programa Bloqueado', 'Notas Generales',
-    'Asignaciones Servidores (JSON)'
+    'Asignaciones Servidores (JSON)', 'Observaciones Líderes (JSON)'
   ]);
   formatHeaderRow(actSheet);
 
@@ -93,6 +94,15 @@ function setupSheets() {
   cfgSheet.appendRow(['mensaje_bloqueo', 'El programa de actividades y logística se encuentra en preparación por el equipo de liderazgo y no está listo aún.']);
   cfgSheet.appendRow(['anuncios_json', JSON.stringify(['Llegar 15 minutos antes de su horario de servicio asignado.', 'Para cambios de turno, avisar con 48h de anticipación.'])]);
   formatHeaderRow(cfgSheet);
+
+  // 7. Hoja de Observaciones y Mejoras de Líderes de Jóvenes
+  let obsSheet = ss.getSheetByName(SHEETS.OBSERVATIONS) || ss.insertSheet(SHEETS.OBSERVATIONS);
+  obsSheet.clear();
+  obsSheet.appendRow([
+    'ID Actividad', 'Título Actividad', 'Fecha Actividad', 'Grupo', 
+    'Líderes', 'Categoría', 'Observación / Sugerencia de Mejora', 'Fecha Registro'
+  ]);
+  formatHeaderRow(obsSheet);
 
   SpreadsheetApp.flush();
   Logger.log('¡Hojas y catálogos de Youngers ICC inicializados exitosamente!');
@@ -165,7 +175,7 @@ function doGet(e) {
     const activities = [];
     const actSheet = ss.getSheetByName(SHEETS.ACTIVITIES);
     if (actSheet && actSheet.getLastRow() > 1) {
-      const totalCols = Math.max(21, actSheet.getLastColumn());
+      const totalCols = Math.max(23, actSheet.getLastColumn());
       const actRows = actSheet.getRange(2, 1, actSheet.getLastRow() - 1, totalCols).getValues();
       actRows.forEach(r => {
         const id = String(r[0]);
@@ -177,6 +187,15 @@ function doGet(e) {
             serverAssignments = typeof r[21] === 'string' ? JSON.parse(r[21]) : r[21];
           } catch (e) {
             serverAssignments = [];
+          }
+        }
+
+        let observations = [];
+        if (r[22]) {
+          try {
+            observations = typeof r[22] === 'string' ? JSON.parse(r[22]) : r[22];
+          } catch (e) {
+            observations = [];
           }
         }
 
@@ -203,7 +222,8 @@ function doGet(e) {
           isProgramLocked: r[19] === true || String(r[19]).toLowerCase() === 'true',
           notes: String(r[20] || ''),
           program: programsByAct[id] || [],
-          serverAssignments: Array.isArray(serverAssignments) ? serverAssignments : []
+          serverAssignments: Array.isArray(serverAssignments) ? serverAssignments : [],
+          observations: Array.isArray(observations) ? observations : []
         });
       });
     }
@@ -312,7 +332,7 @@ function doPost(e) {
 
       // Limpiar y reescribir
       if (actSheet.getLastRow() > 1) {
-        const totalCols = Math.max(22, actSheet.getLastColumn());
+        const totalCols = Math.max(23, actSheet.getLastColumn());
         actSheet.getRange(2, 1, actSheet.getLastRow() - 1, totalCols).clearContent();
       }
       if (progSheet.getLastRow() > 1) {
@@ -321,6 +341,7 @@ function doPost(e) {
 
       const actRowsToAdd = [];
       const progRowsToAdd = [];
+      const obsRowsToAdd = [];
 
       body.activities.forEach(act => {
         actRowsToAdd.push([
@@ -330,7 +351,8 @@ function doPost(e) {
           act.customLocationName || '', act.customLocationAddress || '', act.customLocationMapUrl || '',
           act.customLocationNotes || '', act.prepTime || '', act.activityTime || '',
           act.teardownTime || '', Boolean(act.isProgramLocked), act.notes || '',
-          JSON.stringify(act.serverAssignments || [])
+          JSON.stringify(act.serverAssignments || []),
+          JSON.stringify(act.observations || [])
         ]);
 
         if (Array.isArray(act.program)) {
@@ -340,13 +362,39 @@ function doPost(e) {
             ]);
           });
         }
+
+        if (Array.isArray(act.observations)) {
+          act.observations.forEach(obs => {
+            obsRowsToAdd.push([
+              act.id,
+              act.title || '',
+              act.fullDate || `${act.dayOfWeek || ''} ${act.dayNumber || ''} ${act.month || ''} ${act.year || ''}`.trim(),
+              act.group || '',
+              Array.isArray(obs.leaders) ? obs.leaders.join(', ') : (obs.leaders || ''),
+              Array.isArray(obs.categories) && obs.categories.length > 0 ? obs.categories.join(', ') : (obs.category || 'General'),
+              obs.comment || '',
+              obs.createdAt || new Date().toISOString()
+            ]);
+          });
+        }
       });
 
       if (actRowsToAdd.length > 0) {
-        actSheet.getRange(2, 1, actRowsToAdd.length, 22).setValues(actRowsToAdd);
+        actSheet.getRange(2, 1, actRowsToAdd.length, 23).setValues(actRowsToAdd);
       }
       if (progRowsToAdd.length > 0) {
         progSheet.getRange(2, 1, progRowsToAdd.length, 7).setValues(progRowsToAdd);
+      }
+
+      // Sincronizar hoja de Observaciones de Líderes
+      const obsSheet = ss.getSheetByName(SHEETS.OBSERVATIONS);
+      if (obsSheet) {
+        if (obsSheet.getLastRow() > 1) {
+          obsSheet.getRange(2, 1, obsSheet.getLastRow() - 1, 8).clearContent();
+        }
+        if (obsRowsToAdd.length > 0) {
+          obsSheet.getRange(2, 1, obsRowsToAdd.length, 8).setValues(obsRowsToAdd);
+        }
       }
     }
 
