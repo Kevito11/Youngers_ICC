@@ -630,6 +630,7 @@ export default function App() {
                 <AdminPanel
                   activities={activities}
                   servers={servers}
+                  onAddServer={handleAddServer}
                   announcements={announcements}
                   rolesCatalog={rolesCatalog}
                   hoursCatalog={hoursCatalog}

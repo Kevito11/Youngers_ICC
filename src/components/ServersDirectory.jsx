@@ -25,6 +25,7 @@ export default function ServersDirectory({
   const [editingServer, setEditingServer] = useState(null); // null or server object
   const [isCreating, setIsCreating] = useState(false);
   const [showUnsavedPrompt, setShowUnsavedPrompt] = useState(false);
+  const overlayMouseDownRef = useRef(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -598,9 +599,21 @@ export default function ServersDirectory({
 
       {/* Modal for Creating or Editing a Server */}
       {(isCreating || editingServer) && (
-        <div className="modal-overlay server-modal-overlay" onClick={handleAttemptClose}>
+        <div 
+          className="modal-overlay server-modal-overlay" 
+          onMouseDown={e => {
+            overlayMouseDownRef.current = (e.target === e.currentTarget);
+          }}
+          onClick={e => {
+            if (e.target === e.currentTarget && overlayMouseDownRef.current) {
+              handleAttemptClose();
+            }
+            overlayMouseDownRef.current = false;
+          }}
+        >
           <div 
             className="modal-container server-modal-container" 
+            onMouseDown={e => e.stopPropagation()}
             onClick={e => e.stopPropagation()}
             role="dialog"
             aria-modal="true"

@@ -3,9 +3,10 @@ import {
   Plus, Edit3, Trash2, MapPin, Check, X,
   Lock, Unlock, Key, AlertCircle, ArrowLeft, Calendar,
   ChevronLeft, ChevronRight, Search, LayoutGrid, List,
-  CloudUpload, RefreshCw
+  CloudUpload, RefreshCw, Sparkles, Copy
 } from './Icons';
 import UnsavedChangesModal from './UnsavedChangesModal';
+import SmartProgramImporterModal from './SmartProgramImporterModal';
 import {
   GROUPS_CATALOG,
   LOCATIONS_CATALOG,
@@ -13,6 +14,9 @@ import {
   PROGRAM_BLOCKS_CATALOG,
   DEFAULT_SERVER_ROLES,
   DEFAULT_PROGRAM_HOURS,
+  PREP_TIME_OPTIONS,
+  ACTIVITY_TIME_OPTIONS,
+  TEARDOWN_TIME_OPTIONS,
   loadStoredRoles,
   saveStoredRoles,
   loadStoredHours,
@@ -33,6 +37,7 @@ import {
 export default function AdminPanel({ 
   activities, 
   servers, 
+  onAddServer,
   announcements,
   rolesCatalog: propRolesCatalog,
   hoursCatalog: propHoursCatalog,
@@ -97,6 +102,38 @@ export default function AdminPanel({
       (a.name || '').localeCompare(b.name || '', 'es', { sensitivity: 'base' })
     );
   }, [servers]);
+
+  // Servidores reconocidos o asignados específicamente a esta actividad para selección rápida de responsables
+  const recognizedActivityServers = useMemo(() => {
+    const list = [];
+    const seen = new Set();
+    
+    // 1. Asignaciones de la actividad actual
+    (editingActivity?.serverAssignments || []).forEach(asg => {
+      const name = asg.serverName?.trim();
+      if (name && !seen.has(name.toLowerCase())) {
+        seen.add(name.toLowerCase());
+        list.push({
+          id: asg.serverId || '',
+          name,
+          role: asg.role || 'Servidor'
+        });
+      }
+    });
+
+    // 2. Predicador asignado si no estaba en la lista
+    if (editingActivity?.preacher && !seen.has(editingActivity.preacher.trim().toLowerCase())) {
+      const pName = editingActivity.preacher.trim();
+      seen.add(pName.toLowerCase());
+      list.push({
+        id: '',
+        name: pName,
+        role: 'Predicador'
+      });
+    }
+
+    return list;
+  }, [editingActivity?.serverAssignments, editingActivity?.preacher]);
 
   // Si la actividad a editar tiene un predicador que no está en la lista de servidores, activar modo manual automáticamente
   useEffect(() => {
@@ -188,12 +225,42 @@ export default function AdminPanel({
   }, [serviceAreasCatalog, isAreasPaged, areasStartIndex, areasEndIndex]);
 
   const initialActivityRef = useRef(activityToEdit || null);
+  const overlayMouseDownRef = useRef(false);
+  const [showSmartImporter, setShowSmartImporter] = useState(false);
 
   const isDirty = Boolean(
     editingActivity && 
     initialActivityRef.current && 
     JSON.stringify(editingActivity) !== JSON.stringify(initialActivityRef.current)
   );
+
+  // Aplica los datos estructurados por el Importador Inteligente
+  const handleApplySmartImport = ({ programSteps, schedules, preacher, serverAssignments }) => {
+    if (!editingActivity) return;
+
+    const updated = { ...editingActivity };
+
+    if (programSteps && programSteps.length > 0) {
+      updated.program = programSteps;
+    }
+
+    if (schedules) {
+      if (schedules.prepTime) updated.prepTime = schedules.prepTime;
+      if (schedules.activityTime) updated.activityTime = schedules.activityTime;
+      if (schedules.teardownTime) updated.teardownTime = schedules.teardownTime;
+    }
+
+    if (preacher) {
+      updated.preacher = preacher;
+    }
+
+    if (serverAssignments && serverAssignments.length > 0) {
+      const existing = updated.serverAssignments || [];
+      updated.serverAssignments = [...existing, ...serverAssignments];
+    }
+
+    setEditingActivity(updated);
+  };
 
   // Background scroll lock when editor is active
   useEffect(() => {
@@ -361,6 +428,69 @@ export default function AdminPanel({
   const removeProgramStep = (index) => {
     const updated = editingActivity.program.filter((_, idx) => idx !== index);
     setEditingActivity({ ...editingActivity, program: updated });
+  };
+
+  const moveProgramStep = (index, direction) => {
+    const list = [...(editingActivity?.program || [])];
+    const target = index + direction;
+    if (target < 0 || target >= list.length) return;
+    const temp = list[index];
+    list[index] = list[target];
+    list[target] = temp;
+    setEditingActivity({ ...editingActivity, program: list });
+  };
+
+  const duplicateProgramStep = (index) => {
+    const list = [...(editingActivity?.program || [])];
+    const stepToClone = list[index];
+    if (!stepToClone) return;
+    const cloned = { ...stepToClone, title: `${stepToClone.title} (Copia)` };
+    list.splice(index + 1, 0, cloned);
+    setEditingActivity({ ...editingActivity, program: list });
+  };
+
+  const handleSelectStepResponsible = (stepIdx, chosenName) => {
+    const current = editingActivity?.program[stepIdx]?.responsible || '';
+    if (!current || current === 'Por designar') {
+      updateProgramStep(stepIdx, 'responsible', chosenName);
+    } else {
+      const parts = current.split(',').map(p => p.trim());
+      if (!parts.includes(chosenName)) {
+        updateProgramStep(stepIdx, 'responsible', `${current}, ${chosenName}`);
+      }
+    }
+  };
+
+  const handleToggleStepResponsibleChip = (stepIdx, serverName) => {
+    const current = editingActivity?.program[stepIdx]?.responsible || '';
+    if (!current || current === 'Por designar') {
+      updateProgramStep(stepIdx, 'responsible', serverName);
+      return;
+    }
+    let parts = current.split(',').map(p => p.trim()).filter(Boolean);
+    if (parts.some(p => p.toLowerCase() === serverName.toLowerCase())) {
+      parts = parts.filter(p => p.toLowerCase() !== serverName.toLowerCase());
+      updateProgramStep(stepIdx, 'responsible', parts.length > 0 ? parts.join(', ') : 'Por designar');
+    } else {
+      parts.push(serverName);
+      updateProgramStep(stepIdx, 'responsible', parts.join(', '));
+    }
+  };
+
+  const handleSaveNewRoleDirect = (roleName, roleDuties) => {
+    const trimmed = (roleName || '').trim();
+    if (!trimmed) return;
+    if (rolesCatalog.some(r => r.role?.toLowerCase() === trimmed.toLowerCase())) return;
+    const updated = [
+      ...rolesCatalog,
+      {
+        role: trimmed,
+        duties: (roleDuties || '').trim() || 'Responsabilidad y función ministerial personalizada.'
+      }
+    ];
+    setRolesCatalog(updated);
+    saveStoredRoles(updated);
+    if (onUpdateRolesCatalog) onUpdateRolesCatalog(updated);
   };
 
   // Helpers to manipulate server assignments in form
@@ -879,9 +1009,21 @@ export default function AdminPanel({
 
       {/* If editing or creating, show rich activity editor form as full-screen modal */}
       {editingActivity ? (
-        <div className="modal-overlay admin-editor-modal-overlay" onClick={handleAttemptCloseActivityEditor}>
+        <div 
+          className="modal-overlay admin-editor-modal-overlay" 
+          onMouseDown={e => {
+            overlayMouseDownRef.current = (e.target === e.currentTarget);
+          }}
+          onClick={e => {
+            if (e.target === e.currentTarget && overlayMouseDownRef.current) {
+              handleAttemptCloseActivityEditor();
+            }
+            overlayMouseDownRef.current = false;
+          }}
+        >
           <div 
             className="modal-container admin-editor-modal-container"
+            onMouseDown={e => e.stopPropagation()}
             onClick={e => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
@@ -1210,36 +1352,150 @@ export default function AdminPanel({
               </div>
               <div className="form-grid">
                 <div className="form-group">
-                  <label>Horario de Montaje / Preparación</label>
-                  <input 
-                    type="text" 
-                    value={editingActivity.prepTime || ''}
-                    onChange={e => setEditingActivity({ ...editingActivity, prepTime: e.target.value })}
-                    placeholder="Ej. 5:00 – 7:00 pm"
-                    className="form-input"
-                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+                    <label style={{ margin: 0 }}>Horario de Montaje / Preparación</label>
+                    {editingActivity.prepTime && (
+                      <button
+                        type="button"
+                        className="btn-clear-inline"
+                        onClick={() => setEditingActivity({ ...editingActivity, prepTime: '' })}
+                        title="Borrar horario"
+                      >
+                        ✕ Borrar
+                      </button>
+                    )}
+                  </div>
+                  <select 
+                    value={
+                      PREP_TIME_OPTIONS.some(o => o.value === editingActivity.prepTime)
+                        ? editingActivity.prepTime
+                        : (editingActivity.prepTime ? '__custom__' : '')
+                    }
+                    onChange={e => {
+                      const val = e.target.value;
+                      if (val !== '__custom__') {
+                        setEditingActivity({ ...editingActivity, prepTime: val });
+                      }
+                    }}
+                    className="form-select"
+                  >
+                    <option value="">-- Seleccionar horario de montaje --</option>
+                    {PREP_TIME_OPTIONS.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                    {editingActivity.prepTime && !PREP_TIME_OPTIONS.some(o => o.value === editingActivity.prepTime) && (
+                      <option value="__custom__">📌 Actual: {editingActivity.prepTime}</option>
+                    )}
+                    <option value="__custom__">✍️ Escribir horario personalizado...</option>
+                  </select>
+                  {(!PREP_TIME_OPTIONS.some(o => o.value === editingActivity.prepTime) || editingActivity.prepTime === '') && (
+                    <input 
+                      type="text" 
+                      value={editingActivity.prepTime || ''}
+                      onChange={e => setEditingActivity({ ...editingActivity, prepTime: e.target.value })}
+                      placeholder="O escribe horario personalizado..."
+                      className="form-input"
+                      style={{ marginTop: '0.45rem' }}
+                    />
+                  )}
                 </div>
 
                 <div className="form-group">
-                  <label>Horario del Culto / Actividad</label>
-                  <input 
-                    type="text" 
-                    value={editingActivity.activityTime || ''}
-                    onChange={e => setEditingActivity({ ...editingActivity, activityTime: e.target.value })}
-                    placeholder="Ej. 7:00 – 9:00 pm"
-                    className="form-input"
-                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+                    <label style={{ margin: 0 }}>Horario del Culto / Actividad</label>
+                    {editingActivity.activityTime && (
+                      <button
+                        type="button"
+                        className="btn-clear-inline"
+                        onClick={() => setEditingActivity({ ...editingActivity, activityTime: '' })}
+                        title="Borrar horario"
+                      >
+                        ✕ Borrar
+                      </button>
+                    )}
+                  </div>
+                  <select 
+                    value={
+                      ACTIVITY_TIME_OPTIONS.some(o => o.value === editingActivity.activityTime)
+                        ? editingActivity.activityTime
+                        : (editingActivity.activityTime ? '__custom__' : '')
+                    }
+                    onChange={e => {
+                      const val = e.target.value;
+                      if (val !== '__custom__') {
+                        setEditingActivity({ ...editingActivity, activityTime: val });
+                      }
+                    }}
+                    className="form-select"
+                  >
+                    <option value="">-- Seleccionar horario del culto --</option>
+                    {ACTIVITY_TIME_OPTIONS.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                    {editingActivity.activityTime && !ACTIVITY_TIME_OPTIONS.some(o => o.value === editingActivity.activityTime) && (
+                      <option value="__custom__">📌 Actual: {editingActivity.activityTime}</option>
+                    )}
+                    <option value="__custom__">✍️ Escribir horario personalizado...</option>
+                  </select>
+                  {(!ACTIVITY_TIME_OPTIONS.some(o => o.value === editingActivity.activityTime) || editingActivity.activityTime === '') && (
+                    <input 
+                      type="text" 
+                      value={editingActivity.activityTime || ''}
+                      onChange={e => setEditingActivity({ ...editingActivity, activityTime: e.target.value })}
+                      placeholder="O escribe horario personalizado..."
+                      className="form-input"
+                      style={{ marginTop: '0.45rem' }}
+                    />
+                  )}
                 </div>
 
                 <div className="form-group">
-                  <label>Horario de Desmontaje</label>
-                  <input 
-                    type="text" 
-                    value={editingActivity.teardownTime || ''}
-                    onChange={e => setEditingActivity({ ...editingActivity, teardownTime: e.target.value })}
-                    placeholder="Ej. 9:00 – 9:30 pm"
-                    className="form-input"
-                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+                    <label style={{ margin: 0 }}>Horario de Desmontaje</label>
+                    {editingActivity.teardownTime && (
+                      <button
+                        type="button"
+                        className="btn-clear-inline"
+                        onClick={() => setEditingActivity({ ...editingActivity, teardownTime: '' })}
+                        title="Borrar horario"
+                      >
+                        ✕ Borrar
+                      </button>
+                    )}
+                  </div>
+                  <select 
+                    value={
+                      TEARDOWN_TIME_OPTIONS.some(o => o.value === editingActivity.teardownTime)
+                        ? editingActivity.teardownTime
+                        : (editingActivity.teardownTime ? '__custom__' : '')
+                    }
+                    onChange={e => {
+                      const val = e.target.value;
+                      if (val !== '__custom__') {
+                        setEditingActivity({ ...editingActivity, teardownTime: val });
+                      }
+                    }}
+                    className="form-select"
+                  >
+                    <option value="">-- Seleccionar horario de desmontaje --</option>
+                    {TEARDOWN_TIME_OPTIONS.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                    {editingActivity.teardownTime && !TEARDOWN_TIME_OPTIONS.some(o => o.value === editingActivity.teardownTime) && (
+                      <option value="__custom__">📌 Actual: {editingActivity.teardownTime}</option>
+                    )}
+                    <option value="__custom__">✍️ Escribir horario personalizado...</option>
+                  </select>
+                  {(!TEARDOWN_TIME_OPTIONS.some(o => o.value === editingActivity.teardownTime) || editingActivity.teardownTime === '') && (
+                    <input 
+                      type="text" 
+                      value={editingActivity.teardownTime || ''}
+                      onChange={e => setEditingActivity({ ...editingActivity, teardownTime: e.target.value })}
+                      placeholder="O escribe horario personalizado..."
+                      className="form-input"
+                      style={{ marginTop: '0.45rem' }}
+                    />
+                  )}
                 </div>
 
                 <div className="form-group full-width">
@@ -1262,42 +1518,104 @@ export default function AdminPanel({
                   <h4 className="section-title">3. Programa Minuto a Minuto ({editingActivity.program?.length || 0} pasos)</h4>
                   <p className="section-desc">Selecciona bloques predefinidos de la lista o escribe actividades personalizadas con su descripción.</p>
                 </div>
-                <button 
-                  type="button" 
-                  className="btn btn-secondary btn-sm"
-                  onClick={addProgramStep}
-                >
-                  <Plus size={16} />
-                  <span>Agregar Bloque</span>
-                </button>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <button 
+                    type="button" 
+                    className="btn btn-primary btn-sm"
+                    onClick={() => setShowSmartImporter(true)}
+                    title="Pega texto del programa para autocompletar bloques, horarios y encargados"
+                    style={{ background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)', border: 'none', color: '#fff' }}
+                  >
+                    <Sparkles size={16} />
+                    <span>Importador Inteligente</span>
+                  </button>
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary btn-sm"
+                    onClick={addProgramStep}
+                  >
+                    <Plus size={16} />
+                    <span>Agregar Bloque</span>
+                  </button>
+                </div>
               </div>
 
               <div className="program-steps-editor-list">
                 {(editingActivity.program || []).map((step, idx) => (
                   <div key={idx} className="program-step-edit-card">
-                    {/* Atajo: Selección de bloque predefinido */}
-                    <div style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 600 }}>Plantilla de bloque:</span>
-                      <select 
-                        value="" 
-                        onChange={e => {
-                          if (e.target.value) {
-                            applyBlockTemplate(idx, e.target.value);
-                          }
-                        }}
-                        className="form-select"
-                        style={{ fontSize: '0.78rem', padding: '0.2rem 0.6rem', width: 'auto', maxWidth: '300px' }}
-                      >
-                        <option value="">⚡ Cargar de lista de bloques...</option>
-                        {PROGRAM_BLOCKS_CATALOG.map((b, bIdx) => (
-                          <option key={bIdx} value={b.title}>{b.title}</option>
-                        ))}
-                      </select>
+                    {/* Barra de cabecera del bloque con número, preview, plantilla y acciones */}
+                    <div className="step-card-header-bar">
+                      <div className="step-card-header-left">
+                        <span className="step-number-badge">Bloque #{idx + 1}</span>
+                        <span className="step-time-pill">⏱️ {step.time || 'Sin hora'}</span>
+                        <strong className="step-title-preview">{step.title || 'Nuevo Bloque'}</strong>
+                      </div>
+
+                      <div className="step-card-header-actions">
+                        {/* Selector de plantilla de bloque */}
+                        <div className="template-shortcut-wrap">
+                          <select 
+                            value="" 
+                            onChange={e => {
+                              if (e.target.value) {
+                                applyBlockTemplate(idx, e.target.value);
+                              }
+                            }}
+                            className="form-select template-mini-select"
+                            title="Cargar plantilla de bloque predefinida"
+                          >
+                            <option value="">⚡ Plantilla...</option>
+                            {PROGRAM_BLOCKS_CATALOG.map((b, bIdx) => (
+                              <option key={bIdx} value={b.title}>{b.title}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Botones de orden y acciones */}
+                        <div className="step-actions-group">
+                          <button
+                            type="button"
+                            className="step-icon-btn"
+                            onClick={() => moveProgramStep(idx, -1)}
+                            disabled={idx === 0}
+                            title="Mover bloque hacia arriba"
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            className="step-icon-btn"
+                            onClick={() => moveProgramStep(idx, 1)}
+                            disabled={idx === (editingActivity.program || []).length - 1}
+                            title="Mover bloque hacia abajo"
+                          >
+                            ↓
+                          </button>
+                          <button
+                            type="button"
+                            className="step-icon-btn"
+                            onClick={() => duplicateProgramStep(idx)}
+                            title="Duplicar este bloque"
+                          >
+                            <Copy size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            className="step-icon-btn delete-btn"
+                            onClick={() => removeProgramStep(idx)}
+                            title="Eliminar este bloque"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
                     </div>
 
+                    {/* Campos principales del bloque */}
                     <div className="step-edit-row">
+                      {/* Campo 1: Hora */}
                       <div className="step-field time-field">
-                        <label>Hora</label>
+                        <label>⏱️ Hora</label>
                         <div className="time-select-combo">
                           <input 
                             type="text" 
@@ -1325,8 +1643,9 @@ export default function AdminPanel({
                         </div>
                       </div>
 
+                      {/* Campo 2: Actividad / Bloque */}
                       <div className="step-field title-field">
-                        <label>Actividad / Bloque</label>
+                        <label>📋 Actividad / Bloque</label>
                         <input 
                           type="text" 
                           value={step.title}
@@ -1336,29 +1655,100 @@ export default function AdminPanel({
                         />
                       </div>
 
+                      {/* Campo 3: Responsable con selector basado en servidores reconocidos */}
                       <div className="step-field resp-field">
-                        <label>Responsable</label>
-                        <input 
-                          type="text" 
-                          value={step.responsible}
-                          onChange={e => updateProgramStep(idx, 'responsible', e.target.value)}
-                          placeholder="Ej. Emmanuel Torres"
-                          className="form-input"
-                        />
-                      </div>
+                        <div className="resp-label-row">
+                          <label>👤 Responsable(s)</label>
+                          {step.responsible && step.responsible !== 'Por designar' && (
+                            <button 
+                              type="button" 
+                              className="btn-clear-inline" 
+                              onClick={() => updateProgramStep(idx, 'responsible', 'Por designar')}
+                              title="Restablecer a 'Por designar'"
+                            >
+                              ✕ Limpiar
+                            </button>
+                          )}
+                        </div>
 
-                      <button 
-                        type="button" 
-                        className="btn-remove-step"
-                        onClick={() => removeProgramStep(idx)}
-                        title="Eliminar este bloque"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                        <div className="resp-select-combo">
+                          <input 
+                            type="text" 
+                            value={step.responsible}
+                            onChange={e => updateProgramStep(idx, 'responsible', e.target.value)}
+                            placeholder="Escribe o selecciona de la lista..."
+                            className="form-input resp-input"
+                          />
+
+                          {/* Selector desplegable de responsables reconocidos y registrados */}
+                          <select
+                            value=""
+                            onChange={e => {
+                              if (e.target.value) {
+                                handleSelectStepResponsible(idx, e.target.value);
+                              }
+                            }}
+                            className="form-select resp-dropdown"
+                            title="Seleccionar responsable de los servidores reconocidos o registrados"
+                          >
+                            <option value="">👤 Elegir servidor...</option>
+                            
+                            <optgroup label="⚡ Opciones Generales">
+                              <option value="Todos los servidores">Todos los servidores</option>
+                              <option value="Por designar">Por designar</option>
+                              <option value="Equipo de Alabanza">Equipo de Alabanza</option>
+                              <option value="Liderazgo">Liderazgo</option>
+                            </optgroup>
+
+                            {recognizedActivityServers.length > 0 && (
+                              <optgroup label="⭐ Servidores en esta Actividad">
+                                {recognizedActivityServers.map((s, sIdx) => (
+                                  <option key={`rec-${sIdx}`} value={s.name}>
+                                    ⭐ {s.name} ({s.role})
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+
+                            <optgroup label="👥 Directorio General de Servidores">
+                              {sortedServers.map(s => (
+                                <option key={s.id} value={s.name}>
+                                  {s.name} {s.nickname ? `(${s.nickname})` : ''} - {s.role}
+                                </option>
+                              ))}
+                            </optgroup>
+                          </select>
+                        </div>
+
+                        {/* Chips rápidos de servidores reconocidos para añadir con 1 clic */}
+                        {recognizedActivityServers.length > 0 && (
+                          <div className="resp-quick-chips-row">
+                            <span className="chips-label">Reconocidos:</span>
+                            <div className="chips-list-scroll">
+                              {recognizedActivityServers.slice(0, 10).map((srv, sIdx) => {
+                                const isAlreadyIncluded = (step.responsible || '').toLowerCase().includes(srv.name.toLowerCase());
+                                return (
+                                  <button
+                                    key={sIdx}
+                                    type="button"
+                                    className={`resp-chip-btn ${isAlreadyIncluded ? 'active' : ''}`}
+                                    onClick={() => handleToggleStepResponsibleChip(idx, srv.name)}
+                                    title={isAlreadyIncluded ? `Quitar a ${srv.name}` : `Añadir a ${srv.name}`}
+                                  >
+                                    {isAlreadyIncluded ? '✓ ' : '+ '}
+                                    {srv.name.split(' ')[0]}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
+                    {/* Detalle / Instrucciones */}
                     <div className="step-field full-field">
-                      <label>Detalle / Descripción para los servidores</label>
+                      <label>📝 Detalle / Descripción para los servidores</label>
                       <input 
                         type="text" 
                         value={step.description || ''}
@@ -1545,6 +1935,20 @@ export default function AdminPanel({
     }}
     onSaveAndExit={handleSaveCurrentActivity}
   />
+
+  {/* Modal del Importador Inteligente para autocompletar programas */}
+  {showSmartImporter && (
+    <SmartProgramImporterModal 
+      isOpen={showSmartImporter}
+      onClose={() => setShowSmartImporter(false)}
+      onApply={handleApplySmartImport}
+      registeredServers={servers || []}
+      rolesCatalog={rolesCatalog || []}
+      currentActivity={editingActivity}
+      onAddServer={onAddServer}
+      onUpdateRolesCatalog={handleSaveNewRoleDirect}
+    />
+  )}
 
       {/* Activities Management Table */}
       <div className="admin-table-container">

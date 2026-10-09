@@ -71,6 +71,42 @@ export const STANDARD_SCHEDULES = {
   }
 };
 
+// 3.1 Opciones de Selección de Rangos de Horario para Logística
+export const PREP_TIME_OPTIONS = [
+  { value: '5:00 – 7:00 pm', label: '5:00 – 7:00 pm · Jotapece habitual' },
+  { value: '6:00 – 8:00 pm', label: '6:00 – 8:00 pm · Siervos habitual' },
+  { value: '4:00 – 6:00 pm', label: '4:00 – 6:00 pm' },
+  { value: '3:00 – 5:00 pm', label: '3:00 – 5:00 pm' },
+  { value: '2:30 – 4:00 pm', label: '2:30 – 4:00 pm' },
+  { value: '1:00 – 3:00 pm', label: '1:00 – 3:00 pm' },
+  { value: '8:00 – 9:00 pm', label: '8:00 – 9:00 pm' },
+  { value: 'Horario tentativo · por definir', label: 'Horario tentativo · por definir' }
+];
+
+export const ACTIVITY_TIME_OPTIONS = [
+  { value: '7:00 – 9:00 pm', label: '7:00 – 9:00 pm · Culto Jotapece habitual' },
+  { value: '8:00 – 9:30 pm', label: '8:00 – 9:30 pm · Culto Siervos habitual' },
+  { value: '7:00 – 9:30 pm', label: '7:00 – 9:30 pm · Culto Conjunto (Ambos)' },
+  { value: '6:00 – 9:00 pm', label: '6:00 – 9:00 pm' },
+  { value: '7:30 – 9:30 pm', label: '7:30 – 9:30 pm' },
+  { value: '4:00 – 7:00 pm', label: '4:00 – 7:00 pm · Operativo / Tarde' },
+  { value: '3:30 – 6:30 pm', label: '3:30 – 6:30 pm' },
+  { value: '2:00 – 6:00 pm', label: '2:00 – 6:00 pm · Conferencia' },
+  { value: '9:00 pm – 1:00 am', label: '9:00 pm – 1:00 am · Vigilia nocturna' },
+  { value: 'Horario por definir', label: 'Horario por definir' },
+  { value: 'No hay reunión', label: 'No hay reunión' }
+];
+
+export const TEARDOWN_TIME_OPTIONS = [
+  { value: '9:00 – 9:30 pm', label: '9:00 – 9:30 pm · Jotapece habitual' },
+  { value: '9:30 – 10:00 pm', label: '9:30 – 10:00 pm · Siervos habitual' },
+  { value: '10:00 – 10:30 pm', label: '10:00 – 10:30 pm' },
+  { value: '7:00 – 7:30 pm', label: '7:00 – 7:30 pm' },
+  { value: '1:00 – 1:30 am', label: '1:00 – 1:30 am · Cierre de vigilia' },
+  { value: 'Inmediato al terminar', label: 'Inmediato al terminar' },
+  { value: 'Horario tentativo · desmontaje por definir', label: 'Desmontaje por definir' }
+];
+
 // 4. Bloques o Actividades Típicas del Programa Minuto a Minuto (con descripción predeterminada)
 export const PROGRAM_BLOCKS_CATALOG = [
   {

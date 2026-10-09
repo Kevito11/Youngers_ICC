@@ -404,3 +404,4 @@ export const ArrowUp = ({ className = "w-5 h-5", size = 20 }) => (
     <polyline points="5 12 12 5 19 12"></polyline>
   </svg>
 );
+
