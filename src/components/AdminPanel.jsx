@@ -3,7 +3,7 @@ import {
   Plus, Edit3, Trash2, MapPin, Check, X,
   Lock, Unlock, Key, AlertCircle, ArrowLeft, Calendar,
   ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Search, LayoutGrid, List,
-  CloudUpload, RefreshCw, Sparkles, Copy, Minimize2, Maximize2, MessageSquare
+  CloudUpload, RefreshCw, Sparkles, Copy, Minimize2, Maximize2, MessageSquare, Eye, EyeOff
 } from './Icons';
 import UnsavedChangesModal from './UnsavedChangesModal';
 import SmartProgramImporterModal from './SmartProgramImporterModal';
@@ -58,6 +58,7 @@ export default function AdminPanel({
   onLogoutAdmin,
   onRequireAuth,
   onToggleActivityLock,
+  onToggleActivityVisibility,
   onSyncToSheets
 }) {
   const [editingActivity, setEditingActivity] = useState(activityToEdit || null);
@@ -153,6 +154,8 @@ export default function AdminPanel({
   }, [editingActivity?.id]);
 
   const lockedActivitiesCount = activities.filter(a => a.isProgramLocked).length;
+  const hiddenActivitiesCount = (activities || []).filter(a => a.isHidden).length;
+  const visibleActivitiesCount = (activities || []).length - hiddenActivitiesCount;
 
   // Activities Table View & Pagination
   const PAGE_SIZE_OPTIONS = ['2', '3', '5', '10', '15', '20', 'all'];
@@ -166,6 +169,7 @@ export default function AdminPanel({
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [groupFilter, setGroupFilter] = useState('all'); // 'all' | 'jotapece' | 'siervos' | 'ambos'
+  const [visibilityFilter, setVisibilityFilter] = useState('all'); // 'all' | 'visible' | 'hidden'
   const [viewMode, setViewMode] = useState('cards'); // 'cards' | 'table'
 
   // Compact / Compressed view mode for activities
@@ -252,6 +256,8 @@ export default function AdminPanel({
   const filteredActivities = useMemo(() => {
     return (activities || []).filter(act => {
       if (groupFilter !== 'all' && act.group !== groupFilter) return false;
+      if (visibilityFilter === 'visible' && act.isHidden) return false;
+      if (visibilityFilter === 'hidden' && !act.isHidden) return false;
       if (searchQuery.trim() !== '') {
         const q = searchQuery.toLowerCase().trim();
         const titleMatch = (act.title || '').toLowerCase().includes(q);
@@ -262,7 +268,7 @@ export default function AdminPanel({
       }
       return true;
     });
-  }, [activities, groupFilter, searchQuery]);
+  }, [activities, groupFilter, visibilityFilter, searchQuery]);
 
   const isPaged = pageSize !== 'all';
   const numericLimit = parseInt(pageSize, 10) || 5;
@@ -1439,6 +1445,26 @@ export default function AdminPanel({
                     Si se bloquea, los visitantes verán el mensaje de preparación en esta actividad específica y solo podrán consultar los servidores asignados.
                   </p>
                 </div>
+
+                {/* Control de Ocultar Evento al Público */}
+                <div className="form-group full-width activity-visibility-toggle-box" style={{ marginTop: '0.75rem' }}>
+                  <label className="checkbox-label-styled">
+                    <input 
+                      type="checkbox"
+                      checked={Boolean(editingActivity.isHidden)}
+                      onChange={e => setEditingActivity({ 
+                        ...editingActivity, 
+                        isHidden: e.target.checked 
+                      })}
+                    />
+                    <span className="checkbox-text-bold">
+                      🙈 Ocultar este evento al público (Evitar confusiones y tener presente el más reciente)
+                    </span>
+                  </label>
+                  <p className="field-hint" style={{ marginTop: '0.35rem', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                    Al ocultarlo, las personas no verán este evento en el calendario ni en la logística pública, manteniendo su atención en los eventos más recientes. Solo los administradores podrán verlo.
+                  </p>
+                </div>
               </div>
               )}
             </div>
@@ -2228,6 +2254,45 @@ export default function AdminPanel({
               </button>
             </div>
 
+            {/* Visibility Filter: Todas, Visibles, Ocultas */}
+            <div className="admin-filter-chips admin-visibility-filter-chips" title="Filtrar actividades por visibilidad pública">
+              <button
+                type="button"
+                className={`admin-filter-chip ${visibilityFilter === 'all' ? 'active' : ''}`}
+                onClick={() => {
+                  setVisibilityFilter('all');
+                  setCurrentPage(1);
+                }}
+                title="Ver todas las actividades (visibles y ocultas)"
+              >
+                Todas ({activities.length})
+              </button>
+              <button
+                type="button"
+                className={`admin-filter-chip chip-visible ${visibilityFilter === 'visible' ? 'active' : ''}`}
+                onClick={() => {
+                  setVisibilityFilter('visible');
+                  setCurrentPage(1);
+                }}
+                title="Ver solo las actividades visibles para el público"
+              >
+                <Eye size={13} style={{ marginRight: 4, verticalAlign: 'middle' }} />
+                Visibles ({visibleActivitiesCount})
+              </button>
+              <button
+                type="button"
+                className={`admin-filter-chip chip-hidden ${visibilityFilter === 'hidden' ? 'active' : ''}`}
+                onClick={() => {
+                  setVisibilityFilter('hidden');
+                  setCurrentPage(1);
+                }}
+                title="Ver solo las actividades ocultas para el público"
+              >
+                <EyeOff size={13} style={{ marginRight: 4, verticalAlign: 'middle' }} />
+                Ocultas ({hiddenActivitiesCount})
+              </button>
+            </div>
+
             {/* Search */}
             <div className="search-input-wrapper admin-search-wrapper">
               <Search size={16} className="search-icon" />
@@ -2312,6 +2377,11 @@ export default function AdminPanel({
                                 ⏰ {act.activityTime}
                               </span>
                             )}
+                            {act.isHidden && (
+                              <span className="compact-meta-chip is-hidden-pill" title="Evento oculto al público">
+                                🙈 Oculto
+                              </span>
+                            )}
                           </div>
                         </div>
 
@@ -2325,6 +2395,16 @@ export default function AdminPanel({
                           >
                             {act.isProgramLocked ? <Lock size={13} /> : <Unlock size={13} />}
                             <span className="compact-lock-label">{act.isProgramLocked ? 'Bloqueado' : 'Público'}</span>
+                          </button>
+
+                          <button 
+                            type="button"
+                            className={`btn-table-visibility-toggle btn-compact-lock ${act.isHidden ? 'is-act-hidden' : 'is-act-visible'}`}
+                            onClick={() => onToggleActivityVisibility && onToggleActivityVisibility(act.id)}
+                            title={act.isHidden ? "Este evento está OCULTO para el público. Haz clic para hacerlo visible." : "Este evento es VISIBLE para el público. Haz clic para ocultarlo y evitar confusiones."}
+                          >
+                            {act.isHidden ? <EyeOff size={13} /> : <Eye size={13} />}
+                            <span className="compact-lock-label">{act.isHidden ? 'Oculto' : 'Visible'}</span>
                           </button>
 
                           <button 
@@ -2438,6 +2518,12 @@ export default function AdminPanel({
                             <span className={`group-pill-sm ${isJpc ? 'pill-jpc' : isSiervos ? 'pill-siervos' : 'pill-ambos'}`}>
                               {isJpc ? 'Jotapece' : isSiervos ? 'Siervos' : 'Ambos'}
                             </span>
+                            {act.isHidden && (
+                              <span className="card-hidden-tag" title="Este evento está oculto para el público">
+                                <EyeOff size={12} />
+                                <span>Oculto</span>
+                              </span>
+                            )}
                           </div>
 
                           {act.preacher && act.preacher !== 'Sin predicación' && (
@@ -2469,15 +2555,27 @@ export default function AdminPanel({
 
                     {/* Bottom action row for easy click/tap on mobile */}
                     <div className="admin-card-actions-bar" onClick={(e) => e.stopPropagation()}>
-                      <button 
-                        type="button"
-                        className={`btn-table-lock-toggle ${act.isProgramLocked ? 'is-locked' : 'is-unlocked'}`}
-                        onClick={() => onToggleActivityLock && onToggleActivityLock(act.id)}
-                        title={act.isProgramLocked ? "El programa de esta fecha está bloqueado para visitantes. Haz clic para desbloquearlo." : "El programa de esta fecha es público. Haz clic para bloquearlo."}
-                      >
-                        {act.isProgramLocked ? <Lock size={13} /> : <Unlock size={13} />}
-                        <span>{act.isProgramLocked ? 'Bloqueado' : 'Público'}</span>
-                      </button>
+                      <div className="admin-card-toggles-group" style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                        <button 
+                          type="button"
+                          className={`btn-table-lock-toggle ${act.isProgramLocked ? 'is-locked' : 'is-unlocked'}`}
+                          onClick={() => onToggleActivityLock && onToggleActivityLock(act.id)}
+                          title={act.isProgramLocked ? "El programa de esta fecha está bloqueado para visitantes. Haz clic para desbloquearlo." : "El programa de esta fecha es público. Haz clic para bloquearlo."}
+                        >
+                          {act.isProgramLocked ? <Lock size={13} /> : <Unlock size={13} />}
+                          <span>{act.isProgramLocked ? 'Bloqueado' : 'Público'}</span>
+                        </button>
+
+                        <button 
+                          type="button"
+                          className={`btn-table-visibility-toggle ${act.isHidden ? 'is-act-hidden' : 'is-act-visible'}`}
+                          onClick={() => onToggleActivityVisibility && onToggleActivityVisibility(act.id)}
+                          title={act.isHidden ? "Este evento está OCULTO para el público. Haz clic para hacerlo visible." : "Este evento es VISIBLE para el público. Haz clic para ocultarlo y evitar confusiones."}
+                        >
+                          {act.isHidden ? <EyeOff size={13} /> : <Eye size={13} />}
+                          <span>{act.isHidden ? 'Oculto' : 'Visible'}</span>
+                        </button>
+                      </div>
 
                       <div className="admin-card-btns-group">
                         <button 
@@ -2540,7 +2638,14 @@ export default function AdminPanel({
                         </span>
                       </td>
                       <td>
-                        <strong>{act.title}</strong>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                          <strong>{act.title}</strong>
+                          {act.isHidden && (
+                            <span className="card-hidden-tag" title="Este evento está oculto para el público" style={{ padding: '0.1rem 0.4rem', fontSize: '0.7rem' }}>
+                              🙈 Oculto
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td>{act.preacher || '-'}</td>
                       <td>
@@ -2558,15 +2663,27 @@ export default function AdminPanel({
                       <td>{act.program?.length || 0}</td>
                       <td>{act.serverAssignments?.length || 0}</td>
                       <td>
-                        <button 
-                          type="button"
-                          className={`btn-table-lock-toggle ${act.isProgramLocked ? 'is-locked' : 'is-unlocked'}`}
-                          onClick={() => onToggleActivityLock && onToggleActivityLock(act.id)}
-                          title={act.isProgramLocked ? "El programa de esta fecha está bloqueado para visitantes. Haz clic para desbloquearlo." : "El programa de esta fecha es público. Haz clic para bloquearlo."}
-                        >
-                          {act.isProgramLocked ? <Lock size={13} /> : <Unlock size={13} />}
-                          <span>{act.isProgramLocked ? 'Bloqueado' : 'Público'}</span>
-                        </button>
+                        <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                          <button 
+                            type="button"
+                            className={`btn-table-lock-toggle ${act.isProgramLocked ? 'is-locked' : 'is-unlocked'}`}
+                            onClick={() => onToggleActivityLock && onToggleActivityLock(act.id)}
+                            title={act.isProgramLocked ? "El programa de esta fecha está bloqueado para visitantes. Haz clic para desbloquearlo." : "El programa de esta fecha es público. Haz clic para bloquearlo."}
+                          >
+                            {act.isProgramLocked ? <Lock size={13} /> : <Unlock size={13} />}
+                            <span>{act.isProgramLocked ? 'Bloqueado' : 'Público'}</span>
+                          </button>
+
+                          <button 
+                            type="button"
+                            className={`btn-table-visibility-toggle ${act.isHidden ? 'is-act-hidden' : 'is-act-visible'}`}
+                            onClick={() => onToggleActivityVisibility && onToggleActivityVisibility(act.id)}
+                            title={act.isHidden ? "Este evento está OCULTO para el público. Haz clic para hacerlo visible." : "Este evento es VISIBLE para el público. Haz clic para ocultarlo y evitar confusiones."}
+                          >
+                            {act.isHidden ? <EyeOff size={13} /> : <Eye size={13} />}
+                            <span>{act.isHidden ? 'Oculto' : 'Visible'}</span>
+                          </button>
+                        </div>
                       </td>
                       <td>
                         <div className="table-actions">

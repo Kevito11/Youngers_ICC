@@ -3,7 +3,7 @@ import {
   X, Calendar, Clock, MapPin, User, CheckSquare, Square, 
   Copy, Check, Share2, Printer, Edit3, BookOpen, Music, 
   Monitor, Mic, Coffee, HeartHandshake, Shield, ExternalLink, Navigation,
-  Lock, Unlock, Key, Users, List, LayoutGrid, MessageSquare
+  Lock, Unlock, Key, Users, List, LayoutGrid, MessageSquare, Eye, EyeOff
 } from './Icons';
 import ActivityObservationsSection from './ActivityObservationsSection';
 
@@ -15,7 +15,8 @@ export default function ActivityDetailModal({
   isAdminAuthenticated,
   lockedMessage,
   onRequireAuth,
-  onToggleActivityLock
+  onToggleActivityLock,
+  onToggleActivityVisibility
 }) {
   const isProgramLocked = Boolean(activity?.isProgramLocked);
   const isSpecificProgramLocked = isProgramLocked && !isAdminAuthenticated;
@@ -144,6 +145,14 @@ export default function ActivityDetailModal({
               <X size={20} />
             </button>
           </div>
+
+          {/* Admin Hidden Banner */}
+          {Boolean(activity.isHidden) && (
+            <div className="hidden-activity-admin-alert">
+              <EyeOff size={16} />
+              <span><strong>Evento Oculto al Público:</strong> Este evento está oculto para las personas para evitar confusiones y mantener presente el más reciente. Solo los administradores pueden verlo.</span>
+            </div>
+          )}
 
           {/* Quick info row (Montaje/Desmontaje hidden on mobile to drastically reduce header height) */}
           <div className="modal-quick-info-grid">
@@ -283,6 +292,26 @@ export default function ActivityDetailModal({
                   </span>
                   <span className="mobile-btn-label">
                     {activity.isProgramLocked ? 'Desbloquear' : 'Bloquear'}
+                  </span>
+                </button>
+              )}
+
+              {/* Per-Activity Visibility Toggle Button for Admins */}
+              {isAdminAuthenticated && onToggleActivityVisibility && (
+                <button 
+                  type="button"
+                  className={`btn btn-print-hide btn-act-visibility ${activity.isHidden ? 'is-act-hidden' : 'is-act-visible'}`}
+                  onClick={() => onToggleActivityVisibility(activity.id)}
+                  title={activity.isHidden 
+                    ? "Este evento está OCULTO para el público. Haz clic para hacerlo visible." 
+                    : "Este evento es VISIBLE para el público. Haz clic para ocultarlo y evitar confusiones."}
+                >
+                  {activity.isHidden ? <EyeOff size={15} /> : <Eye size={15} />}
+                  <span className="desktop-btn-label">
+                    {activity.isHidden ? 'Oculto al público' : 'Visible al público'}
+                  </span>
+                  <span className="mobile-btn-label">
+                    {activity.isHidden ? 'Oculto' : 'Visible'}
                   </span>
                 </button>
               )}

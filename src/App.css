@@ -11162,5 +11162,141 @@ html, body {
   }
 }
 
+/* =========================================================
+   12. ACTIVITY VISIBILITY & EVENT HIDING (Ocultar Eventos)
+   ========================================================= */
+
+/* Toggle Button in Table and Cards */
+.btn-table-visibility-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.btn-table-visibility-toggle.is-act-hidden {
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #cbd5e1;
+}
+
+.btn-table-visibility-toggle.is-act-hidden:hover {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.btn-table-visibility-toggle.is-act-visible {
+  background: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #bae6fd;
+}
+
+.btn-table-visibility-toggle.is-act-visible:hover {
+  background: #bae6fd;
+  color: #0284c7;
+}
+
+/* Modal Toolbar Visibility Button */
+.btn-act-visibility {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.8rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-act-visibility.is-act-hidden {
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #cbd5e1;
+}
+
+.btn-act-visibility.is-act-hidden:hover {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.btn-act-visibility.is-act-visible {
+  background: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #bae6fd;
+}
+
+.btn-act-visibility.is-act-visible:hover {
+  background: #bae6fd;
+}
+
+/* Hidden Event Tag and Badges */
+.card-hidden-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-pill);
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #cbd5e1;
+}
+
+.compact-meta-chip.is-hidden-pill {
+  background: #f1f5f9 !important;
+  color: #64748b !important;
+  border-color: #cbd5e1 !important;
+  font-weight: 700 !important;
+}
+
+/* Alert Banner in Activity Detail Modal */
+.hidden-activity-admin-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.65rem 0.9rem;
+  background: #f8fafc;
+  border: 1.5px dashed #94a3b8;
+  border-radius: var(--radius-sm);
+  color: #475569;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  margin: 0.5rem 0 0.75rem;
+}
+
+.hidden-activity-admin-alert svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: #64748b;
+}
+
+/* Visibility Filter Chips in Admin Toolbar */
+.admin-visibility-filter-chips .admin-filter-chip.chip-visible.active {
+  background: #0284c7 !important;
+  color: #ffffff !important;
+  border-color: #0284c7 !important;
+}
+
+.admin-visibility-filter-chips .admin-filter-chip.chip-hidden.active {
+  background: #475569 !important;
+  color: #ffffff !important;
+  border-color: #475569 !important;
+}
+
+.activity-visibility-toggle-box {
+  background: #f8fafc;
+  padding: 0.85rem 1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-sm);
+}
+
 
 

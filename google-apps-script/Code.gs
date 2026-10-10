@@ -36,7 +36,7 @@ function setupSheets() {
     'Título / Serie', 'Predicador', 'Lugar', 'Tipo Ubicación', 'Es Sede Externa', 
     'Lugar Externo', 'Dirección Externa', 'GPS Map URL', 'Notas Transporte', 
     'Horario Montaje', 'Horario Culto', 'Horario Desmontaje', 'Programa Bloqueado', 'Notas Generales',
-    'Asignaciones Servidores (JSON)', 'Observaciones Líderes (JSON)'
+    'Asignaciones Servidores (JSON)', 'Observaciones Líderes (JSON)', 'Oculto al Público (True/False)'
   ]);
   formatHeaderRow(actSheet);
 
@@ -223,7 +223,8 @@ function doGet(e) {
           notes: String(r[20] || ''),
           program: programsByAct[id] || [],
           serverAssignments: Array.isArray(serverAssignments) ? serverAssignments : [],
-          observations: Array.isArray(observations) ? observations : []
+          observations: Array.isArray(observations) ? observations : [],
+          isHidden: r[23] === true || String(r[23]).toLowerCase() === 'true'
         });
       });
     }
@@ -352,7 +353,8 @@ function doPost(e) {
           act.customLocationNotes || '', act.prepTime || '', act.activityTime || '',
           act.teardownTime || '', Boolean(act.isProgramLocked), act.notes || '',
           JSON.stringify(act.serverAssignments || []),
-          JSON.stringify(act.observations || [])
+          JSON.stringify(act.observations || []),
+          Boolean(act.isHidden)
         ]);
 
         if (Array.isArray(act.program)) {
@@ -380,7 +382,7 @@ function doPost(e) {
       });
 
       if (actRowsToAdd.length > 0) {
-        actSheet.getRange(2, 1, actRowsToAdd.length, 23).setValues(actRowsToAdd);
+        actSheet.getRange(2, 1, actRowsToAdd.length, actRowsToAdd[0].length).setValues(actRowsToAdd);
       }
       if (progRowsToAdd.length > 0) {
         progSheet.getRange(2, 1, progRowsToAdd.length, 7).setValues(progRowsToAdd);

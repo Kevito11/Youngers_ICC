@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Header from './components/Header';
 import GeneralCalendarView from './components/GeneralCalendarView';
 import TimelineVisual from './components/TimelineVisual';
@@ -546,7 +546,12 @@ export default function App() {
     saveStoredAnnouncements(newAnnouncements);
   };
 
-  // Program lock toggle per activity -> LocalStorage
+  // Filter visible activities for the public (hides archived/past/hidden events to avoid confusion)
+  const visibleActivities = useMemo(() => {
+    return activities.filter(a => !a.isHidden);
+  }, [activities]);
+
+  // Program lock toggle per activity -> LocalStorage & Google Sheets
   const handleToggleActivityLock = (activityId) => {
     requireModificationAuth(() => {
       const nextList = activities.map(a => {
@@ -562,9 +567,51 @@ export default function App() {
       });
       setActivities(nextList);
       saveStoredActivities(nextList);
+
+      // Auto background sync to Google Sheets
+      syncToGoogleSheets(nextList, servers, {
+        announcements,
+        isProgramLocked,
+        lockedMessage,
+        rolesCatalog,
+        hoursCatalog,
+        serviceAreasCatalog
+      }).catch(err => console.warn('Background sync error on lock toggle:', err));
     }, {
       title: 'Control de Acceso al Programa',
       description: 'Introduce la clave administrativa para cambiar el bloqueo del programa de esta actividad.'
+    });
+  };
+
+  // Activity visibility toggle (hide/show from public view) -> LocalStorage & Google Sheets
+  const handleToggleActivityVisibility = (activityId) => {
+    requireModificationAuth(() => {
+      const nextList = activities.map(a => {
+        if (a.id === activityId) {
+          const nextHidden = !Boolean(a.isHidden);
+          const updated = { ...a, isHidden: nextHidden };
+          if (selectedActivity && selectedActivity.id === activityId) {
+            setSelectedActivity(updated);
+          }
+          return updated;
+        }
+        return a;
+      });
+      setActivities(nextList);
+      saveStoredActivities(nextList);
+
+      // Auto background sync to Google Sheets
+      syncToGoogleSheets(nextList, servers, {
+        announcements,
+        isProgramLocked,
+        lockedMessage,
+        rolesCatalog,
+        hoursCatalog,
+        serviceAreasCatalog
+      }).catch(err => console.warn('Background sync error on visibility toggle:', err));
+    }, {
+      title: 'Visibilidad de la Actividad',
+      description: 'Introduce la clave administrativa para cambiar si esta actividad está visible u oculta para el público.'
     });
   };
 
@@ -581,7 +628,7 @@ export default function App() {
         currentTab={currentTab}
         onNavigate={handleHeaderNavigate}
         onNewActivity={handleNewActivityClick}
-        activitiesCount={activities.length}
+        activitiesCount={isAdminAuthenticated ? activities.length : visibleActivities.length}
         serversCount={servers.length}
         isAdminAuthenticated={isAdminAuthenticated}
         onLogoutAdmin={handleAdminLogout}
@@ -591,11 +638,11 @@ export default function App() {
       <main className="main-content-area">
         <div className="container">
 
-          {/* Normal View Routing - Calendar is always visible */}
+          {/* Normal View Routing - Calendar and public views only show visible activities for regular users */}
           <>
             {currentTab === 'general' && (
               <GeneralCalendarView
-                activities={activities}
+                activities={visibleActivities}
                 onSelectActivity={handleSelectActivity}
               />
             )}
@@ -603,7 +650,7 @@ export default function App() {
             {currentTab === 'jotapece' && (
               <TimelineVisual
                 groupType="jotapece"
-                activities={activities}
+                activities={visibleActivities}
                 onSelectActivity={handleSelectActivity}
               />
             )}
@@ -611,14 +658,14 @@ export default function App() {
             {currentTab === 'siervos' && (
               <TimelineVisual
                 groupType="siervos"
-                activities={activities}
+                activities={visibleActivities}
                 onSelectActivity={handleSelectActivity}
               />
             )}
 
             {currentTab === 'periodos' && (
               <PeriodsHistoryView
-                activities={activities}
+                activities={visibleActivities}
                 onSelectActivity={handleSelectActivity}
                 onNavigateToCalendar={() => navigateToTab('general')}
               />
@@ -627,7 +674,7 @@ export default function App() {
             {currentTab === 'servers' && (
               <ServersDirectory
                 servers={servers}
-                activities={activities}
+                activities={visibleActivities}
                 serviceAreasCatalog={serviceAreasCatalog}
                 rolesCatalog={rolesCatalog}
                 onUpdateRolesCatalog={handleUpdateRolesCatalog}
@@ -642,7 +689,7 @@ export default function App() {
 
             {currentTab === 'participacion' && (
               <ServerParticipationView
-                activities={activities}
+                activities={visibleActivities}
                 servers={servers}
                 onSelectActivity={handleSelectActivity}
               />
@@ -673,6 +720,7 @@ export default function App() {
                   onLogoutAdmin={handleAdminLogout}
                   onRequireAuth={requireModificationAuth}
                   onToggleActivityLock={handleToggleActivityLock}
+                  onToggleActivityVisibility={handleToggleActivityVisibility}
                   onSyncToSheets={handleSyncToSheets}
                 />
               ) : (
@@ -720,6 +768,7 @@ export default function App() {
           lockedMessage={lockedMessage}
           onRequireAuth={requireModificationAuth}
           onToggleActivityLock={handleToggleActivityLock}
+          onToggleActivityVisibility={handleToggleActivityVisibility}
         />
       )}
 
