@@ -45,6 +45,17 @@ export default function ServerParticipationView({
     }
   }, [selectedServerId]);
 
+  // Si el servidor seleccionado no existe en la lista oficial de servidores, limpiar selección obsoleta
+  useEffect(() => {
+    if (selectedServerId && servers.length > 0) {
+      const exists = servers.some(s => s.id === selectedServerId);
+      if (!exists) {
+        setSelectedServerId('');
+        try { localStorage.removeItem(STORAGE_ACTIVE_SERVER_KEY); } catch {}
+      }
+    }
+  }, [servers, selectedServerId]);
+
   // Guardar checklist en localStorage
   useEffect(() => {
     try {

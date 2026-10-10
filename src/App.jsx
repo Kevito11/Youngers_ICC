@@ -11,7 +11,7 @@ import FooterNotes from './components/FooterNotes';
 import PasswordAuthModal from './components/PasswordAuthModal';
 import ProgramLockedScreen from './components/ProgramLockedScreen';
 import ScrollToTopButton from './components/ScrollToTopButton';
-import { Lock, Key } from './components/Icons';
+import { Lock, Key, RefreshCw, Check, AlertCircle } from './components/Icons';
 
 import {
   loadStoredActivities,
@@ -67,7 +67,7 @@ export default function App() {
     return pathToTab(window.location.pathname);
   });
 
-  // State loaded internally from localStorage (or initial defaults)
+  // State loaded internally (Google Sheets cloud source of truth, fallback to initial data)
   const [activities, setActivities] = useState(() => loadStoredActivities());
   const [servers, setServers] = useState(() => loadStoredServers());
   const [announcements, setAnnouncements] = useState(() => loadStoredAnnouncements());
@@ -78,6 +78,10 @@ export default function App() {
   const [rolesCatalog, setRolesCatalog] = useState(() => loadStoredRoles());
   const [hoursCatalog, setHoursCatalog] = useState(() => loadStoredHours());
   const [serviceAreasCatalog, setServiceAreasCatalog] = useState(() => loadStoredServiceAreas());
+
+  // Cloud Synchronization Status & Initial Loader
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [cloudSyncStatus, setCloudSyncStatus] = useState(null); // 'syncing' | 'saved' | 'error' | null
 
   // Password authentication state for administrative modification
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(() => {
@@ -95,7 +99,7 @@ export default function App() {
   const [selectedActivity, setSelectedActivity] = useState(null);
   const [activityToEditInAdmin, setActivityToEditInAdmin] = useState(null);
 
-  // Sincronización en segundo plano con Google Sheets para que los visitantes reciban siempre los datos más actualizados
+  // Sincronización en el arranque con Google Sheets (fuente única de verdad para todos los navegadores)
   useEffect(() => {
     let isMounted = true;
     const fetchLatestFromSheets = async () => {
@@ -104,39 +108,35 @@ export default function App() {
         if (data && data.success && isMounted) {
           if (Array.isArray(data.activities) && data.activities.length > 0) {
             setActivities(data.activities);
-            saveStoredActivities(data.activities);
           }
           if (Array.isArray(data.servers) && data.servers.length > 0) {
             setServers(data.servers);
-            saveStoredServers(data.servers);
           }
           if (Array.isArray(data.announcements)) {
             setAnnouncements(data.announcements);
-            saveStoredAnnouncements(data.announcements);
           }
           if (Array.isArray(data.rolesCatalog) && data.rolesCatalog.length > 0) {
             setRolesCatalog(data.rolesCatalog);
-            saveStoredRoles(data.rolesCatalog);
           }
           if (Array.isArray(data.hoursCatalog) && data.hoursCatalog.length > 0) {
             setHoursCatalog(data.hoursCatalog);
-            saveStoredHours(data.hoursCatalog);
           }
           if (Array.isArray(data.serviceAreasCatalog) && data.serviceAreasCatalog.length > 0) {
             setServiceAreasCatalog(data.serviceAreasCatalog);
-            saveStoredServiceAreas(data.serviceAreasCatalog);
           }
           if (data.isProgramLocked !== undefined) {
             setIsProgramLocked(Boolean(data.isProgramLocked));
-            saveStoredProgramLocked(Boolean(data.isProgramLocked));
           }
           if (data.lockedMessage) {
             setLockedMessage(data.lockedMessage);
-            saveStoredLockedMessage(data.lockedMessage);
           }
         }
       } catch (err) {
-        console.warn('Uso de almacenamiento local (sin conexión a Google Sheets):', err.message);
+        console.warn('Uso de valores predeterminados (sin conexión a Google Sheets):', err.message);
+      } finally {
+        if (isMounted) {
+          setIsInitialLoading(false);
+        }
       }
     };
 
@@ -258,22 +258,37 @@ export default function App() {
     }
   }, [servers, rolesCatalog, serviceAreasCatalog, isAdminAuthenticated]);
 
-  // Renombrado en cascada para roles
-  const handleCascadeRenameRole = (oldRole, newRole) => {
+  // Renombrado en cascada para roles -> Sincronización en la nube
+  const handleCascadeRenameRole = async (oldRole, newRole) => {
     const nextServers = servers.map(s => s.role === oldRole ? { ...s, role: newRole } : s);
     setServers(nextServers);
-    saveStoredServers(nextServers);
 
     const nextActivities = activities.map(act => ({
       ...act,
       serverAssignments: (act.serverAssignments || []).map(asg => asg.role === oldRole ? { ...asg, role: newRole } : asg)
     }));
     setActivities(nextActivities);
-    saveStoredActivities(nextActivities);
+
+    setCloudSyncStatus('syncing');
+    try {
+      await syncToGoogleSheets(nextActivities, nextServers, {
+        announcements,
+        isProgramLocked,
+        lockedMessage,
+        rolesCatalog,
+        hoursCatalog,
+        serviceAreasCatalog
+      });
+      setCloudSyncStatus('saved');
+      setTimeout(() => setCloudSyncStatus(null), 3000);
+    } catch (e) {
+      setCloudSyncStatus('error');
+      setTimeout(() => setCloudSyncStatus(null), 4000);
+    }
   };
 
-  // Renombrado en cascada para áreas de servicio
-  const handleCascadeRenameArea = (oldArea, newArea) => {
+  // Renombrado en cascada para áreas de servicio -> Sincronización en la nube
+  const handleCascadeRenameArea = async (oldArea, newArea) => {
     const nextServers = servers.map(s => {
       if (Array.isArray(s.primaryAreas) && s.primaryAreas.includes(oldArea)) {
         return {
@@ -284,7 +299,23 @@ export default function App() {
       return s;
     });
     setServers(nextServers);
-    saveStoredServers(nextServers);
+
+    setCloudSyncStatus('syncing');
+    try {
+      await syncToGoogleSheets(activities, nextServers, {
+        announcements,
+        isProgramLocked,
+        lockedMessage,
+        rolesCatalog,
+        hoursCatalog,
+        serviceAreasCatalog
+      });
+      setCloudSyncStatus('saved');
+      setTimeout(() => setCloudSyncStatus(null), 3000);
+    } catch (e) {
+      setCloudSyncStatus('error');
+      setTimeout(() => setCloudSyncStatus(null), 4000);
+    }
   };
 
   // Sync state to URL and listen to browser Back / Forward buttons
@@ -383,9 +414,9 @@ export default function App() {
     const nextList = activities.map(a => a.id === updatedAct.id ? updatedAct : a);
     setActivities(nextList);
     setSelectedActivity(updatedAct);
-    saveStoredActivities(nextList);
 
     // Enviar y persistir en Google Sheets en segundo plano
+    setCloudSyncStatus('syncing');
     try {
       await syncToGoogleSheets(nextList, servers, {
         announcements,
@@ -395,8 +426,12 @@ export default function App() {
         hoursCatalog,
         serviceAreasCatalog
       });
+      setCloudSyncStatus('saved');
+      setTimeout(() => setCloudSyncStatus(null), 3000);
     } catch (err) {
-      console.warn('Guardado localmente, pendiente sincronización con Google Sheets:', err.message);
+      console.warn('Error al sincronizar con Google Sheets:', err.message);
+      setCloudSyncStatus('error');
+      setTimeout(() => setCloudSyncStatus(null), 4000);
     }
   };
 
@@ -412,8 +447,8 @@ export default function App() {
     });
   };
 
-  // Save activity in Admin (add or update) -> LocalStorage
-  const handleSaveActivity = (activity) => {
+  // Save activity in Admin (add or update) -> Sincronización inmediata en Google Sheets
+  const handleSaveActivity = async (activity) => {
     const exists = activities.some(a => a.id === activity.id);
     let nextList;
     if (exists) {
@@ -422,15 +457,49 @@ export default function App() {
       nextList = [...activities, activity];
     }
     setActivities(nextList);
-    saveStoredActivities(nextList);
+
+    setCloudSyncStatus('syncing');
+    try {
+      await syncToGoogleSheets(nextList, servers, {
+        announcements,
+        isProgramLocked,
+        lockedMessage,
+        rolesCatalog,
+        hoursCatalog,
+        serviceAreasCatalog
+      });
+      setCloudSyncStatus('saved');
+      setTimeout(() => setCloudSyncStatus(null), 3000);
+    } catch (err) {
+      console.warn('Error al guardar actividad en Google Sheets:', err.message);
+      setCloudSyncStatus('error');
+      setTimeout(() => setCloudSyncStatus(null), 4000);
+    }
   };
 
-  // Delete activity in Admin -> LocalStorage
+  // Delete activity in Admin -> Sincronización inmediata en Google Sheets
   const handleDeleteActivity = (actId) => {
-    requireModificationAuth(() => {
+    requireModificationAuth(async () => {
       const nextList = activities.filter(a => a.id !== actId);
       setActivities(nextList);
-      saveStoredActivities(nextList);
+
+      setCloudSyncStatus('syncing');
+      try {
+        await syncToGoogleSheets(nextList, servers, {
+          announcements,
+          isProgramLocked,
+          lockedMessage,
+          rolesCatalog,
+          hoursCatalog,
+          serviceAreasCatalog
+        });
+        setCloudSyncStatus('saved');
+        setTimeout(() => setCloudSyncStatus(null), 3000);
+      } catch (err) {
+        console.warn('Error al eliminar actividad en Google Sheets:', err.message);
+        setCloudSyncStatus('error');
+        setTimeout(() => setCloudSyncStatus(null), 4000);
+      }
     }, {
       title: 'Eliminar Actividad',
       description: 'Introduce la contraseña administrativa para autorizar la eliminación de esta actividad.'
@@ -540,10 +609,26 @@ export default function App() {
     });
   };
 
-  // Update announcements -> LocalStorage
-  const handleUpdateAnnouncements = (newAnnouncements) => {
+  // Update announcements -> Sincronización en Google Sheets
+  const handleUpdateAnnouncements = async (newAnnouncements) => {
     setAnnouncements(newAnnouncements);
-    saveStoredAnnouncements(newAnnouncements);
+    setCloudSyncStatus('syncing');
+    try {
+      await syncToGoogleSheets(activities, servers, {
+        announcements: newAnnouncements,
+        isProgramLocked,
+        lockedMessage,
+        rolesCatalog,
+        hoursCatalog,
+        serviceAreasCatalog
+      });
+      setCloudSyncStatus('saved');
+      setTimeout(() => setCloudSyncStatus(null), 3000);
+    } catch (err) {
+      console.warn('Error al sincronizar avisos:', err);
+      setCloudSyncStatus('error');
+      setTimeout(() => setCloudSyncStatus(null), 4000);
+    }
   };
 
   // Filter visible activities for the public (hides archived/past/hidden events to avoid confusion)
@@ -551,9 +636,9 @@ export default function App() {
     return activities.filter(a => !a.isHidden);
   }, [activities]);
 
-  // Program lock toggle per activity -> LocalStorage & Google Sheets
+  // Program lock toggle per activity -> Sincronización en Google Sheets
   const handleToggleActivityLock = (activityId) => {
-    requireModificationAuth(() => {
+    requireModificationAuth(async () => {
       const nextList = activities.map(a => {
         if (a.id === activityId) {
           const nextLock = !Boolean(a.isProgramLocked);
@@ -566,26 +651,33 @@ export default function App() {
         return a;
       });
       setActivities(nextList);
-      saveStoredActivities(nextList);
 
-      // Auto background sync to Google Sheets
-      syncToGoogleSheets(nextList, servers, {
-        announcements,
-        isProgramLocked,
-        lockedMessage,
-        rolesCatalog,
-        hoursCatalog,
-        serviceAreasCatalog
-      }).catch(err => console.warn('Background sync error on lock toggle:', err));
+      setCloudSyncStatus('syncing');
+      try {
+        await syncToGoogleSheets(nextList, servers, {
+          announcements,
+          isProgramLocked,
+          lockedMessage,
+          rolesCatalog,
+          hoursCatalog,
+          serviceAreasCatalog
+        });
+        setCloudSyncStatus('saved');
+        setTimeout(() => setCloudSyncStatus(null), 3000);
+      } catch (err) {
+        console.warn('Error al cambiar bloqueo de actividad:', err);
+        setCloudSyncStatus('error');
+        setTimeout(() => setCloudSyncStatus(null), 4000);
+      }
     }, {
       title: 'Control de Acceso al Programa',
       description: 'Introduce la clave administrativa para cambiar el bloqueo del programa de esta actividad.'
     });
   };
 
-  // Activity visibility toggle (hide/show from public view) -> LocalStorage & Google Sheets
+  // Activity visibility toggle (hide/show from public view) -> Sincronización en Google Sheets
   const handleToggleActivityVisibility = (activityId) => {
-    requireModificationAuth(() => {
+    requireModificationAuth(async () => {
       const nextList = activities.map(a => {
         if (a.id === activityId) {
           const nextHidden = !Boolean(a.isHidden);
@@ -598,28 +690,66 @@ export default function App() {
         return a;
       });
       setActivities(nextList);
-      saveStoredActivities(nextList);
 
-      // Auto background sync to Google Sheets
-      syncToGoogleSheets(nextList, servers, {
-        announcements,
-        isProgramLocked,
-        lockedMessage,
-        rolesCatalog,
-        hoursCatalog,
-        serviceAreasCatalog
-      }).catch(err => console.warn('Background sync error on visibility toggle:', err));
+      setCloudSyncStatus('syncing');
+      try {
+        await syncToGoogleSheets(nextList, servers, {
+          announcements,
+          isProgramLocked,
+          lockedMessage,
+          rolesCatalog,
+          hoursCatalog,
+          serviceAreasCatalog
+        });
+        setCloudSyncStatus('saved');
+        setTimeout(() => setCloudSyncStatus(null), 3000);
+      } catch (err) {
+        console.warn('Error al cambiar visibilidad de actividad:', err);
+        setCloudSyncStatus('error');
+        setTimeout(() => setCloudSyncStatus(null), 4000);
+      }
     }, {
       title: 'Visibilidad de la Actividad',
       description: 'Introduce la clave administrativa para cambiar si esta actividad está visible u oculta para el público.'
     });
   };
 
-  // Program lock message update -> LocalStorage
-  const handleUpdateLockedMessage = (newMsg) => {
+  // Program lock message update -> Sincronización en Google Sheets
+  const handleUpdateLockedMessage = async (newMsg) => {
     setLockedMessage(newMsg);
-    saveStoredLockedMessage(newMsg);
+    setCloudSyncStatus('syncing');
+    try {
+      await syncToGoogleSheets(activities, servers, {
+        announcements,
+        isProgramLocked,
+        lockedMessage: newMsg,
+        rolesCatalog,
+        hoursCatalog,
+        serviceAreasCatalog
+      });
+      setCloudSyncStatus('saved');
+      setTimeout(() => setCloudSyncStatus(null), 3000);
+    } catch (err) {
+      console.warn('Error al sincronizar mensaje de bloqueo:', err);
+      setCloudSyncStatus('error');
+      setTimeout(() => setCloudSyncStatus(null), 4000);
+    }
   };
+
+  // Pantalla de carga inicial mientras consulta la nube oficial en Google Sheets
+  if (isInitialLoading) {
+    return (
+      <div className="app-loading-screen">
+        <div className="app-loading-content">
+          <div className="app-loading-spinner-ring">
+            <RefreshCw size={36} className="spin-icon" />
+          </div>
+          <h2 className="app-loading-title">Youngers ICC</h2>
+          <p className="app-loading-desc">Sincronizando actividades y servidores desde la nube...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="app-root">
@@ -780,6 +910,30 @@ export default function App() {
         title={authModal.title}
         description={authModal.description}
       />
+
+      {/* Cloud Synchronization Status Toast */}
+      {cloudSyncStatus && (
+        <div className={`cloud-sync-floating-toast ${cloudSyncStatus}`}>
+          {cloudSyncStatus === 'syncing' && (
+            <>
+              <RefreshCw size={15} className="spin-icon" />
+              <span>Guardando en la nube (Google Sheets)...</span>
+            </>
+          )}
+          {cloudSyncStatus === 'saved' && (
+            <>
+              <Check size={16} />
+              <span>Guardado en Google Sheets ✓</span>
+            </>
+          )}
+          {cloudSyncStatus === 'error' && (
+            <>
+              <AlertCircle size={16} />
+              <span>Error de conexión al sincronizar</span>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Floating Scroll-To-Top Button */}
       <ScrollToTopButton />

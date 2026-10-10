@@ -43,12 +43,28 @@ export async function fetchFromGoogleSheets() {
     throw new Error(`Error de red al consultar Google Sheets: ${response.status}`);
   }
 
-  const data = await response.json();
-  if (!data.success) {
-    throw new Error(data.error || 'Error desconocido al obtener datos de Google Sheets');
+  const rawData = await response.json();
+  if (!rawData.success) {
+    throw new Error(rawData.error || 'Error desconocido al obtener datos de Google Sheets');
   }
 
-  return data;
+  // Normalizar actividades para soportar visibilidad oculta (isHidden) en cualquier versión del Apps Script
+  if (Array.isArray(rawData.activities)) {
+    rawData.activities = rawData.activities.map(act => {
+      const hasHiddenTag = typeof act.notes === 'string' && act.notes.includes('[[HIDDEN:true]]');
+      const isHidden = Boolean(act.isHidden) || hasHiddenTag;
+      const cleanNotes = typeof act.notes === 'string'
+        ? act.notes.replace(/\s*\[\[HIDDEN:true\]\]/g, '').trim()
+        : (act.notes || '');
+      return {
+        ...act,
+        isHidden,
+        notes: cleanNotes
+      };
+    });
+  }
+
+  return rawData;
 }
 
 /**
@@ -60,9 +76,22 @@ export async function syncToGoogleSheets(activities, servers, extra = {}) {
     throw new Error('No se ha configurado la URL del Script de Google Sheets.');
   }
 
+  // Asegurar que isHidden se guarde tanto en columna 24 como embebido discretamente en notes
+  // para que persista de manera infalible en cualquier versión desplegada de Google Apps Script
+  const processedActivities = (activities || []).map(act => {
+    const isHidden = Boolean(act.isHidden);
+    const rawNotes = (act.notes || '').replace(/\s*\[\[HIDDEN:true\]\]/g, '').trim();
+    const finalNotes = isHidden ? (rawNotes ? `${rawNotes} [[HIDDEN:true]]` : '[[HIDDEN:true]]') : rawNotes;
+    return {
+      ...act,
+      isHidden,
+      notes: finalNotes
+    };
+  });
+
   const payload = {
     action: 'syncAll',
-    activities,
+    activities: processedActivities,
     servers,
     announcements: extra.announcements,
     isProgramLocked: extra.isProgramLocked,
