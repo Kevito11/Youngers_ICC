@@ -26,14 +26,14 @@ export const handler = async (event) => {
   }
 
   try {
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
     if (!apiKey) {
       return {
         statusCode: 500,
         headers,
         body: JSON.stringify({
           success: false,
-          error: 'Falta la variable de entorno GEMINI_API_KEY en la configuración de Netlify. Por favor configúrala en el panel de Netlify (Site settings > Environment variables).'
+          error: 'Falta la clave GEMINI_API_KEY (o VITE_GEMINI_API_KEY). Configúrala en el archivo .env o en el panel de Netlify.'
         })
       };
     }
@@ -49,19 +49,40 @@ export const handler = async (event) => {
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    
-    // Configuración del modelo con respuesta JSON forzada
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash',
-      generationConfig: {
-        responseMimeType: 'application/json',
-        temperature: 0.1
-      }
-    });
-
     const prompt = buildExtractionPrompt(rawText, registeredServers, rolesCatalog, attendingServers);
 
-    const result = await model.generateContent(prompt);
+    // Lista de modelos compatibles en orden de preferencia
+    const CANDIDATE_MODELS = [
+      'gemini-1.5-flash-latest',
+      'gemini-1.5-flash-8b',
+      'gemini-2.5-flash',
+      'gemini-1.5-flash'
+    ];
+
+    let result = null;
+    let lastError = null;
+
+    for (const modelName of CANDIDATE_MODELS) {
+      try {
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: {
+            responseMimeType: 'application/json',
+            temperature: 0.1
+          }
+        });
+        result = await model.generateContent(prompt);
+        if (result) break;
+      } catch (err) {
+        lastError = err;
+        console.warn(`Modelo ${modelName} no disponible o falló:`, err.message);
+      }
+    }
+
+    if (!result) {
+      throw lastError || new Error('No se pudo generar respuesta con ninguno de los modelos de Gemini.');
+    }
+
     const responseText = result.response.text();
     
     // Limpiar posibles etiquetas de código markdown
