@@ -3,7 +3,7 @@ import {
   Plus, Edit3, Trash2, MapPin, Check, X,
   Lock, Unlock, Key, AlertCircle, ArrowLeft, Calendar,
   ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Search, LayoutGrid, List,
-  CloudUpload, RefreshCw, Sparkles, Copy, Minimize2, Maximize2, MessageSquare, Eye, EyeOff
+  CloudUpload, RefreshCw, Sparkles, Copy, Minimize2, Maximize2, MessageSquare, Eye, EyeOff, CheckCircle2
 } from './Icons';
 import UnsavedChangesModal from './UnsavedChangesModal';
 import SmartProgramImporterModal from './SmartProgramImporterModal';
@@ -32,7 +32,8 @@ import {
   saveStoredServers,
   saveStoredAnnouncements,
   saveStoredLockedMessage,
-  saveStoredProgramLocked
+  saveStoredProgramLocked,
+  isActivityExpired
 } from '../data/initialData';
 
 export default function AdminPanel({ 
@@ -59,6 +60,7 @@ export default function AdminPanel({
   onRequireAuth,
   onToggleActivityLock,
   onToggleActivityVisibility,
+  onToggleActivityCompletion,
   onSyncToSheets
 }) {
   const [editingActivity, setEditingActivity] = useState(activityToEdit || null);
@@ -1463,6 +1465,27 @@ export default function AdminPanel({
                   </label>
                   <p className="field-hint" style={{ marginTop: '0.35rem', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
                     Al ocultarlo, las personas no verán este evento en el calendario ni en la logística pública, manteniendo su atención en los eventos más recientes. Solo los administradores podrán verlo.
+                  </p>
+                </div>
+
+                {/* Control de Marcar como Concluida / Completada */}
+                <div className="form-group full-width activity-completed-toggle-box" style={{ marginTop: '0.75rem' }}>
+                  <label className="checkbox-label-styled">
+                    <input 
+                      type="checkbox"
+                      checked={Boolean(editingActivity.isCompleted || editingActivity.status === 'completed')}
+                      onChange={e => setEditingActivity({ 
+                        ...editingActivity, 
+                        isCompleted: e.target.checked,
+                        status: e.target.checked ? 'completed' : 'active'
+                      })}
+                    />
+                    <span className="checkbox-text-bold">
+                      ✅ Marcar actividad como concluida / completada (Archivar en historial)
+                    </span>
+                  </label>
+                  <p className="field-hint" style={{ marginTop: '0.35rem', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                    Al marcarla como concluida, se retirará del calendario activo y pasará al Registro por Períodos (Historial).
                   </p>
                 </div>
               </div>

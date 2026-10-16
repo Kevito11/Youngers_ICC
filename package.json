@@ -11,6 +11,7 @@
     "compartir": "npx localtunnel --port 5173 --subdomain icc-youngers"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },

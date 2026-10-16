@@ -23,7 +23,8 @@ import {
   loadStoredProgramLocked,
   saveStoredProgramLocked,
   loadStoredLockedMessage,
-  saveStoredLockedMessage
+  saveStoredLockedMessage,
+  isActivityExpired
 } from './data/initialData';
 import {
   loadStoredRoles,
@@ -636,6 +637,16 @@ export default function App() {
     return activities.filter(a => !a.isHidden);
   }, [activities]);
 
+  // Actividades activas o pendientes (para el Calendario General y cronogramas activos)
+  const activeActivities = useMemo(() => {
+    return visibleActivities.filter(a => !isActivityExpired(a));
+  }, [visibleActivities]);
+
+  // Actividades con plazo cumplido o completadas (exclusivamente para Registro por Períodos / Historial)
+  const historyActivities = useMemo(() => {
+    return visibleActivities.filter(a => isActivityExpired(a));
+  }, [visibleActivities]);
+
   // Program lock toggle per activity -> Sincronización en Google Sheets
   const handleToggleActivityLock = (activityId) => {
     requireModificationAuth(async () => {
@@ -714,6 +725,49 @@ export default function App() {
     });
   };
 
+  // Activity completion toggle (mark completed / active) -> Sincronización en Google Sheets
+  const handleToggleActivityCompletion = (activityId) => {
+    requireModificationAuth(async () => {
+      const nextList = activities.map(a => {
+        if (a.id === activityId) {
+          const currentlyCompleted = Boolean(isActivityExpired(a));
+          const updated = { 
+            ...a, 
+            isCompleted: !currentlyCompleted,
+            status: !currentlyCompleted ? 'completed' : 'active'
+          };
+          if (selectedActivity && selectedActivity.id === activityId) {
+            setSelectedActivity(updated);
+          }
+          return updated;
+        }
+        return a;
+      });
+      setActivities(nextList);
+
+      setCloudSyncStatus('syncing');
+      try {
+        await syncToGoogleSheets(nextList, servers, {
+          announcements,
+          isProgramLocked,
+          lockedMessage,
+          rolesCatalog,
+          hoursCatalog,
+          serviceAreasCatalog
+        });
+        setCloudSyncStatus('saved');
+        setTimeout(() => setCloudSyncStatus(null), 3000);
+      } catch (err) {
+        console.warn('Error al cambiar conclusión de actividad:', err);
+        setCloudSyncStatus('error');
+        setTimeout(() => setCloudSyncStatus(null), 4000);
+      }
+    }, {
+      title: 'Estado de la Actividad',
+      description: 'Introduce la clave administrativa para marcar esta actividad como completada (historial) o volver a activarla.'
+    });
+  };
+
   // Program lock message update -> Sincronización en Google Sheets
   const handleUpdateLockedMessage = async (newMsg) => {
     setLockedMessage(newMsg);
@@ -758,7 +812,7 @@ export default function App() {
         currentTab={currentTab}
         onNavigate={handleHeaderNavigate}
         onNewActivity={handleNewActivityClick}
-        activitiesCount={isAdminAuthenticated ? activities.length : visibleActivities.length}
+        activitiesCount={isAdminAuthenticated ? activities.length : activeActivities.length}
         serversCount={servers.length}
         isAdminAuthenticated={isAdminAuthenticated}
         onLogoutAdmin={handleAdminLogout}
@@ -768,11 +822,11 @@ export default function App() {
       <main className="main-content-area">
         <div className="container">
 
-          {/* Normal View Routing - Calendar and public views only show visible activities for regular users */}
+          {/* Normal View Routing - Calendar and public views only show active activities; History shows completed/expired */}
           <>
             {currentTab === 'general' && (
               <GeneralCalendarView
-                activities={visibleActivities}
+                activities={activeActivities}
                 onSelectActivity={handleSelectActivity}
               />
             )}
@@ -780,7 +834,7 @@ export default function App() {
             {currentTab === 'jotapece' && (
               <TimelineVisual
                 groupType="jotapece"
-                activities={visibleActivities}
+                activities={activeActivities}
                 onSelectActivity={handleSelectActivity}
               />
             )}
@@ -788,14 +842,14 @@ export default function App() {
             {currentTab === 'siervos' && (
               <TimelineVisual
                 groupType="siervos"
-                activities={visibleActivities}
+                activities={activeActivities}
                 onSelectActivity={handleSelectActivity}
               />
             )}
 
             {currentTab === 'periodos' && (
               <PeriodsHistoryView
-                activities={visibleActivities}
+                activities={historyActivities}
                 onSelectActivity={handleSelectActivity}
                 onNavigateToCalendar={() => navigateToTab('general')}
               />
@@ -851,6 +905,7 @@ export default function App() {
                   onRequireAuth={requireModificationAuth}
                   onToggleActivityLock={handleToggleActivityLock}
                   onToggleActivityVisibility={handleToggleActivityVisibility}
+                  onToggleActivityCompletion={handleToggleActivityCompletion}
                   onSyncToSheets={handleSyncToSheets}
                 />
               ) : (
@@ -899,6 +954,7 @@ export default function App() {
           onRequireAuth={requireModificationAuth}
           onToggleActivityLock={handleToggleActivityLock}
           onToggleActivityVisibility={handleToggleActivityVisibility}
+          onToggleActivityCompletion={handleToggleActivityCompletion}
         />
       )}
 

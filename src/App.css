@@ -11236,6 +11236,40 @@ html, body {
   background: #bae6fd;
 }
 
+/* Modal Toolbar Completion Button */
+.btn-act-completed {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.8rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-act-completed.is-act-completed {
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
+.btn-act-completed.is-act-completed:hover {
+  background: #bbf7d0;
+}
+
+.btn-act-completed.is-act-pending {
+  background: #f8fafc;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+
+.btn-act-completed.is-act-pending:hover {
+  background: #f1f5f9;
+  color: #1e293b;
+}
+
 /* Hidden Event Tag and Badges */
 .card-hidden-tag {
   display: inline-flex;

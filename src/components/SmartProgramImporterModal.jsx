@@ -22,9 +22,11 @@ export default function SmartProgramImporterModal({
   const [serverSearch, setServerSearch] = useState('');
   const [serverFilterGroup, setServerFilterGroup] = useState('all'); // all | jotapece | siervos | selected
 
-  // Paso 2: Estado del texto y análisis
+  // Paso 2: Estado del texto y análisis con Gemini AI
   const [rawText, setRawText] = useState('');
   const [parsedResult, setParsedResult] = useState(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [parseError, setParseError] = useState(null);
   
   // Registro de decisiones para servidores y roles no existentes en el sistema: 'created' | 'temporary' | { type: 'associated', serverId, serverName }
   const [unregisteredDecisions, setUnregisteredDecisions] = useState({});
@@ -203,19 +205,33 @@ export default function SmartProgramImporterModal({
     setStep(2);
   };
 
-  // Ejecutar el parser en Paso 2
-  const handleParse = () => {
-    if (!rawText.trim()) return;
+  // Ejecutar el parser en Paso 2 con Gemini AI
+  const handleParse = async () => {
+    if (!rawText.trim() || isAnalyzing) return;
+    setIsAnalyzing(true);
+    setParseError(null);
     setUnregisteredDecisions({});
     setAssociatingServer(null);
     setSelectedAssociateId({});
-    const result = parseSmartProgramText(
-      rawText, 
-      confirmedAttendingServers, 
-      registeredServers, 
-      rolesCatalog
-    );
-    setParsedResult(result);
+    try {
+      const result = await parseSmartProgramText(
+        rawText, 
+        confirmedAttendingServers, 
+        registeredServers, 
+        rolesCatalog
+      );
+      if (!result.success) {
+        setParseError(result.error || 'Ocurrió un error al procesar el texto con Gemini AI.');
+        setParsedResult(null);
+      } else {
+        setParsedResult(result);
+      }
+    } catch (err) {
+      setParseError(err.message || 'Error inesperado al conectar con Gemini AI.');
+      setParsedResult(null);
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   // Manejadores para registrar servidores y roles permanentemente o temporales
@@ -755,13 +771,33 @@ Backstage
                     type="button"
                     className="btn btn-primary"
                     onClick={handleParse}
-                    disabled={!rawText.trim()}
+                    disabled={!rawText.trim() || isAnalyzing}
                   >
-                    <Sparkles size={16} />
-                    <span>Interpretar Programa</span>
+                    {isAnalyzing ? (
+                      <>
+                        <span className="spinner-mini" style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.8s linear infinite', marginRight: 6 }}></span>
+                        <span>Interpretando con Gemini AI...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={16} />
+                        <span>Interpretar Programa con IA</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
+
+              {/* Banner de error al consultar Gemini AI */}
+              {parseError && (
+                <div className="importer-error-banner" style={{ margin: '1rem 0', padding: '0.9rem 1.1rem', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', color: '#991b1b', display: 'flex', alignItems: 'flex-start', gap: '0.75rem', fontSize: '0.88rem' }}>
+                  <AlertTriangle size={20} style={{ flexShrink: 0, marginTop: 1, color: '#dc2626' }} />
+                  <div>
+                    <strong style={{ fontSize: '0.92rem' }}>Error al procesar con Gemini AI</strong>
+                    <p style={{ margin: '0.35rem 0 0', lineHeight: 1.45, color: '#7f1d1d' }}>{parseError}</p>
+                  </div>
+                </div>
+              )}
 
               {/* Resultados del análisis */}
               {parsedResult && (

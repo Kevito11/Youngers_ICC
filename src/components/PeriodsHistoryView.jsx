@@ -16,8 +16,10 @@ export default function PeriodsHistoryView({
 
   const currentPeriod = PERIODS.find(p => p.id === selectedPeriodId) || PERIODS[0];
 
-  // Filter activities belonging to selected period
+  // Filter activities belonging to selected period (exclusively historical / completed / expired)
   const periodActivities = activities.filter(act => {
+    if (!isActivityExpired(act)) return false;
+
     const actPeriod = getActivityPeriod(act);
     if (actPeriod !== selectedPeriodId) return false;
 
@@ -35,10 +37,9 @@ export default function PeriodsHistoryView({
     return true;
   });
 
-  // Calculate statistics for this period
-  const allInPeriod = activities.filter(a => getActivityPeriod(a) === selectedPeriodId);
-  const expiredCount = allInPeriod.filter(a => isActivityExpired(a)).length;
-  const upcomingCount = allInPeriod.length - expiredCount;
+  // Calculate statistics for this period (historical/completed activities only)
+  const allInPeriod = activities.filter(a => getActivityPeriod(a) === selectedPeriodId && isActivityExpired(a));
+  const completedCount = allInPeriod.length;
 
   return (
     <div className="periods-history-page">
@@ -57,7 +58,7 @@ export default function PeriodsHistoryView({
       {/* Period Selection Tabs */}
       <div className="period-tabs-bar">
         {PERIODS.map(period => {
-          const count = activities.filter(a => getActivityPeriod(a) === period.id).length;
+          const count = activities.filter(a => getActivityPeriod(a) === period.id && isActivityExpired(a)).length;
           const isSelected = selectedPeriodId === period.id;
 
           return (
@@ -74,7 +75,7 @@ export default function PeriodsHistoryView({
               </div>
               <div className="period-tab-meta">
                 <span className="period-season-label">{period.season}</span>
-                <span className="period-count-pill">{count} actividades</span>
+                <span className="period-count-pill">{count} en historial</span>
               </div>
             </button>
           );
@@ -106,19 +107,13 @@ export default function PeriodsHistoryView({
 
         <div className="overview-metrics-grid">
           <div className="metric-box">
-            <span className="metric-num">{allInPeriod.length}</span>
-            <span className="metric-label">Total Actividades</span>
-          </div>
-          <div className="metric-box">
-            <span className="metric-num text-success">{expiredCount}</span>
+            <span className="metric-num text-success">{completedCount}</span>
             <span className="metric-label">Plazo Cumplido</span>
           </div>
-          {currentPeriod.isCurrent && (
-            <div className="metric-box">
-              <span className="metric-num text-accent">{upcomingCount}</span>
-              <span className="metric-label">Próximas en Agenda</span>
-            </div>
-          )}
+          <div className="metric-box">
+            <span className="metric-num">{currentPeriod.season}</span>
+            <span className="metric-label">Temporada</span>
+          </div>
         </div>
       </div>
 

@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import { Calendar, Clock, MapPin, Users, ChevronRight, ChevronLeft, Sparkles, Lock } from './Icons';
+import { isActivityExpired } from '../data/initialData';
 
 export default function TimelineVisual({ groupType, activities, onSelectActivity }) {
   const isJpc = groupType === 'jotapece';
   const [pageSize, setPageSize] = useState('5');
   const [currentPage, setCurrentPage] = useState(1);
   
-  // Filter activities for this group (also include 'ambos' group activities like Cena de Jóvenes o Los Manguitos)
+  // Filter activities for this group (only active, excluding completed or expired)
   const groupActivities = activities.filter(
-    a => a.group === groupType || a.group === 'ambos'
+    a => !isActivityExpired(a) && (a.group === groupType || a.group === 'ambos')
   );
 
   const totalItems = groupActivities.length;

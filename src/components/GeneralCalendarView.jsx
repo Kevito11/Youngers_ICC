@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Calendar, Search, Filter, Sparkles, ChevronRight, ChevronLeft, MapPin, Clock, Lock } from './Icons';
+import { isActivityExpired } from '../data/initialData';
 
 export default function GeneralCalendarView({ activities, onSelectActivity }) {
   const [filterType, setFilterType] = useState('all'); // all | siervos | jotapece | ambos | otros
@@ -8,6 +9,9 @@ export default function GeneralCalendarView({ activities, onSelectActivity }) {
   const [currentPage, setCurrentPage] = useState(1);
 
   const filteredActivities = activities.filter(activity => {
+    // Solo actividades activas o pendientes
+    if (isActivityExpired(activity)) return false;
+
     // Search query filter
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();

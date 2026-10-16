@@ -3,9 +3,10 @@ import {
   X, Calendar, Clock, MapPin, User, CheckSquare, Square, 
   Copy, Check, Share2, Printer, Edit3, BookOpen, Music, 
   Monitor, Mic, Coffee, HeartHandshake, Shield, ExternalLink, Navigation,
-  Lock, Unlock, Key, Users, List, LayoutGrid, MessageSquare, Eye, EyeOff
+  Lock, Unlock, Key, Users, List, LayoutGrid, MessageSquare, Eye, EyeOff, CheckCircle2
 } from './Icons';
 import ActivityObservationsSection from './ActivityObservationsSection';
+import { isActivityExpired } from '../data/initialData';
 
 export default function ActivityDetailModal({ 
   activity, 
@@ -16,7 +17,8 @@ export default function ActivityDetailModal({
   lockedMessage,
   onRequireAuth,
   onToggleActivityLock,
-  onToggleActivityVisibility
+  onToggleActivityVisibility,
+  onToggleActivityCompletion
 }) {
   const isProgramLocked = Boolean(activity?.isProgramLocked);
   const isSpecificProgramLocked = isProgramLocked && !isAdminAuthenticated;
@@ -312,6 +314,26 @@ export default function ActivityDetailModal({
                   </span>
                   <span className="mobile-btn-label">
                     {activity.isHidden ? 'Oculto' : 'Visible'}
+                  </span>
+                </button>
+              )}
+
+              {/* Per-Activity Completion Toggle Button for Admins */}
+              {isAdminAuthenticated && onToggleActivityCompletion && (
+                <button 
+                  type="button"
+                  className={`btn btn-print-hide btn-act-completed ${isActivityExpired(activity) ? 'is-act-completed' : 'is-act-pending'}`}
+                  onClick={() => onToggleActivityCompletion(activity.id)}
+                  title={isActivityExpired(activity) 
+                    ? "Esta actividad está concluida o con plazo cumplido (en historial). Haz clic para reactivarla en el calendario." 
+                    : "Haz clic para marcar esta actividad como concluida (pasará automáticamente al historial de períodos)."}
+                >
+                  <CheckCircle2 size={15} />
+                  <span className="desktop-btn-label">
+                    {isActivityExpired(activity) ? 'Concluida (Historial)' : 'Marcar Concluida'}
+                  </span>
+                  <span className="mobile-btn-label">
+                    {isActivityExpired(activity) ? 'Historial' : 'Concluir'}
                   </span>
                 </button>
               )}
