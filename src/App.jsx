@@ -632,20 +632,31 @@ export default function App() {
     }
   };
 
-  // Filter visible activities for the public (hides archived/past/hidden events to avoid confusion)
+  // Actividades visibles para el público general (oculta eventos no públicos)
   const visibleActivities = useMemo(() => {
     return activities.filter(a => !a.isHidden);
   }, [activities]);
 
-  // Actividades activas o pendientes (para el Calendario General y cronogramas activos)
+  // Actividades activas o pendientes (para el Calendario General y cronogramas activos públicos)
+  // Muro estricto: descarta por completo todo evento expirado por fecha/hora o completado
   const activeActivities = useMemo(() => {
     return visibleActivities.filter(a => !isActivityExpired(a));
   }, [visibleActivities]);
 
-  // Actividades con plazo cumplido o completadas (exclusivamente para Registro por Períodos / Historial)
+  // Actividades con plazo cumplido o completadas (exclusivamente para Registro por Períodos / Historial público)
   const historyActivities = useMemo(() => {
     return visibleActivities.filter(a => isActivityExpired(a));
   }, [visibleActivities]);
+
+  // Para el Panel Administrativo: Actividades Vigentes (incluye eventos visibles y ocultos en preparación)
+  const adminActiveActivities = useMemo(() => {
+    return (activities || []).filter(a => !isActivityExpired(a));
+  }, [activities]);
+
+  // Para el Panel Administrativo: Historial / Finalizadas (archivo y eventos concluidos)
+  const adminHistoryActivities = useMemo(() => {
+    return (activities || []).filter(a => isActivityExpired(a));
+  }, [activities]);
 
   // Program lock toggle per activity -> Sincronización en Google Sheets
   const handleToggleActivityLock = (activityId) => {
@@ -883,6 +894,8 @@ export default function App() {
               isAdminAuthenticated ? (
                 <AdminPanel
                   activities={activities}
+                  activeActivities={adminActiveActivities}
+                  historyActivities={adminHistoryActivities}
                   servers={servers}
                   onAddServer={handleAddServer}
                   announcements={announcements}

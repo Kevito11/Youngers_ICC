@@ -832,29 +832,84 @@ export function getActivityPeriod(activity) {
   return 'sep-dic';
 }
 
+const SPANISH_MONTHS_MAP = {
+  ene: 1, feb: 2, mar: 3, abr: 4, may: 5, jun: 6,
+  jul: 7, ago: 8, sep: 9, oct: 10, nov: 11, dic: 12
+};
+
 /**
  * Verifica si una actividad ya cumplió su plazo (fecha/hora ya pasada o completada)
+ * Actúa como un muro estricto de filtrado para vistas públicas y administrativas
  */
 export function isActivityExpired(activity) {
   if (!activity) return false;
+
+  // Si está explícitamente marcada como completada, archivada o estatus completado
   if (activity.isCompleted || activity.isExpired || activity.isArchived || activity.status === 'completed') {
     return true;
   }
 
+  // 1. Extraer año, mes y día de forma exhaustiva
+  let year, month, day;
+
   if (activity.fullDate) {
-    const parts = activity.fullDate.split('-').map(Number);
-    if (parts.length === 3) {
-      const [year, month, day] = parts;
-      let hour = 22;
-      let minute = 0;
-      if (activity.actEnd) {
-        const [h, m] = activity.actEnd.split(':').map(Number);
-        if (!isNaN(h)) hour = h;
-        if (!isNaN(m)) minute = m;
-      }
-      const actDeadline = new Date(year, month - 1, day, hour, minute);
-      return new Date() >= actDeadline;
+    const cleanDate = String(activity.fullDate).split('T')[0].replace(/\//g, '-');
+    const parts = cleanDate.split('-').map(Number);
+    if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+      [year, month, day] = parts;
     }
+  }
+
+  // Fallback si no tiene fullDate pero tiene year, month, dayNumber
+  if ((!year || !month || !day) && activity.year && activity.month && activity.dayNumber) {
+    const y = parseInt(activity.year, 10);
+    const d = parseInt(activity.dayNumber, 10);
+    const mStr = String(activity.month).toLowerCase().trim().slice(0, 3);
+    const m = SPANISH_MONTHS_MAP[mStr] || parseInt(activity.month, 10);
+    if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+      year = y;
+      month = m;
+      day = d;
+    }
+  }
+
+  if (year && month && day) {
+    // 2. Extraer hora de finalización (actEnd, teardownTime, activityTime o default 22:00)
+    let hour = 22;
+    let minute = 0;
+
+    if (activity.actEnd) {
+      const [h, m] = activity.actEnd.split(':').map(Number);
+      if (!isNaN(h)) hour = h;
+      if (!isNaN(m)) minute = m;
+    } else if (activity.teardownTime) {
+      // e.g. "9:00 – 9:30 pm" o "9:30 – 10:00 pm"
+      const match = activity.teardownTime.match(/[-–]\s*(\d{1,2}):?(\d{2})?\s*(am|pm)/i);
+      if (match) {
+        let h = parseInt(match[1], 10);
+        const m = match[2] ? parseInt(match[2], 10) : 0;
+        const isPm = match[3].toLowerCase() === 'pm';
+        if (isPm && h < 12) h += 12;
+        if (!isPm && h === 12) h = 0;
+        hour = h;
+        minute = m;
+      }
+    } else if (activity.activityTime) {
+      // e.g. "7:00 pm – 9:00 pm" o "8:00 – 9:30 pm"
+      const match = activity.activityTime.match(/[-–]\s*(\d{1,2}):?(\d{2})?\s*(am|pm)/i);
+      if (match) {
+        let h = parseInt(match[1], 10);
+        const m = match[2] ? parseInt(match[2], 10) : 0;
+        const isPm = match[3].toLowerCase() === 'pm';
+        if (isPm && h < 12) h += 12;
+        if (!isPm && h === 12) h = 0;
+        hour = h;
+        minute = m;
+      }
+    }
+
+    const actDeadline = new Date(year, month - 1, day, hour, minute);
+    return new Date() >= actDeadline;
   }
 
   return false;

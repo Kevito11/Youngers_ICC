@@ -37,7 +37,9 @@ import {
 } from '../data/initialData';
 
 export default function AdminPanel({ 
-  activities, 
+  activities = [], 
+  activeActivities: propActiveActivities,
+  historyActivities: propHistoryActivities,
   servers, 
   onAddServer,
   announcements,
@@ -155,9 +157,33 @@ export default function AdminPanel({
     }
   }, [editingActivity?.id]);
 
-  const lockedActivitiesCount = activities.filter(a => a.isProgramLocked).length;
-  const hiddenActivitiesCount = (activities || []).filter(a => a.isHidden).length;
-  const visibleActivitiesCount = (activities || []).length - hiddenActivitiesCount;
+  // Clasificación de actividades en el panel de administración
+  const [activityStatusTab, setActivityStatusTab] = useState('active'); // 'active' (Vigentes) | 'history' (Historial / Finalizadas)
+
+  const activeActivitiesList = useMemo(() => {
+    if (propActiveActivities && propActiveActivities.length >= 0) return propActiveActivities;
+    return (activities || []).filter(a => !isActivityExpired(a));
+  }, [propActiveActivities, activities]);
+
+  const historyActivitiesList = useMemo(() => {
+    if (propHistoryActivities && propHistoryActivities.length >= 0) return propHistoryActivities;
+    return (activities || []).filter(a => isActivityExpired(a));
+  }, [propHistoryActivities, activities]);
+
+  const currentSourceActivities = activityStatusTab === 'active'
+    ? activeActivitiesList
+    : historyActivitiesList;
+
+  const activeActivitiesCount = activeActivitiesList.length;
+  const historyActivitiesCount = historyActivitiesList.length;
+  const lockedActivitiesCount = (activities || []).filter(a => a.isProgramLocked).length;
+  const currentHiddenCount = (currentSourceActivities || []).filter(a => a.isHidden).length;
+  const currentVisibleCount = (currentSourceActivities || []).length - currentHiddenCount;
+
+  const handleActivityStatusTabChange = (tabKey) => {
+    setActivityStatusTab(tabKey);
+    setCurrentPage(1);
+  };
 
   // Activities Table View & Pagination
   const PAGE_SIZE_OPTIONS = ['2', '3', '5', '10', '15', '20', 'all'];
@@ -256,7 +282,7 @@ export default function AdminPanel({
 
   // Filtered & paginated activities for admin table
   const filteredActivities = useMemo(() => {
-    return (activities || []).filter(act => {
+    return (currentSourceActivities || []).filter(act => {
       if (groupFilter !== 'all' && act.group !== groupFilter) return false;
       if (visibilityFilter === 'visible' && act.isHidden) return false;
       if (visibilityFilter === 'hidden' && !act.isHidden) return false;
@@ -270,7 +296,7 @@ export default function AdminPanel({
       }
       return true;
     });
-  }, [activities, groupFilter, visibilityFilter, searchQuery]);
+  }, [currentSourceActivities, groupFilter, visibilityFilter, searchQuery]);
 
   const isPaged = pageSize !== 'all';
   const numericLimit = parseInt(pageSize, 10) || 5;
@@ -2170,11 +2196,55 @@ export default function AdminPanel({
 
       {/* Activities Management Table */}
       <div className="admin-table-container">
+        {/* Pestañas de Clasificación: Actividades Vigentes vs Historial / Finalizadas */}
+        <div className="admin-status-tabs-nav" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activityStatusTab === 'active'}
+            className={`admin-status-tab-btn ${activityStatusTab === 'active' ? 'active tab-active-mode' : ''}`}
+            onClick={() => handleActivityStatusTabChange('active')}
+          >
+            <div className="tab-btn-content">
+              <Calendar size={18} className="tab-icon" />
+              <span className="tab-label">Actividades Vigentes</span>
+              <span className="tab-counter-badge badge-active">{activeActivitiesCount}</span>
+            </div>
+            <span className="tab-sublabel">Eventos programados, pendientes o en curso</span>
+          </button>
+
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activityStatusTab === 'history'}
+            className={`admin-status-tab-btn ${activityStatusTab === 'history' ? 'active tab-history-mode' : ''}`}
+            onClick={() => handleActivityStatusTabChange('history')}
+          >
+            <div className="tab-btn-content">
+              <CheckCircle2 size={18} className="tab-icon" />
+              <span className="tab-label">Historial / Finalizadas</span>
+              <span className="tab-counter-badge badge-history">{historyActivitiesCount}</span>
+            </div>
+            <span className="tab-sublabel">Eventos con plazo cumplido o completados</span>
+          </button>
+        </div>
+
         <div className="admin-table-header-row">
           <div className="admin-table-title-col">
-            <h3 className="sub-heading">Registro de Actividades Activas ({filteredActivities.length})</h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+              <h3 className="sub-heading">
+                {activityStatusTab === 'active' 
+                  ? `Actividades Vigentes (${filteredActivities.length})` 
+                  : `Historial de Finalizadas (${filteredActivities.length})`}
+              </h3>
+              <span className={`status-source-pill ${activityStatusTab === 'active' ? 'pill-active-theme' : 'pill-history-theme'}`}>
+                {activityStatusTab === 'active' ? 'En Agenda / Pendientes' : 'Concluidas / Plazo Cumplido'}
+              </span>
+            </div>
             <p className="admin-table-subtitle">
-              Administra, edita o bloquea el programa de cada actividad registrada.
+              {activityStatusTab === 'active' 
+                ? 'Administra, edita o bloquea el programa de cada actividad vigente registrada.' 
+                : 'Consulta, edita o reactiva actividades que ya cumplieron su plazo o fueron concluidas.'}
             </p>
           </div>
 
@@ -2286,9 +2356,9 @@ export default function AdminPanel({
                   setVisibilityFilter('all');
                   setCurrentPage(1);
                 }}
-                title="Ver todas las actividades (visibles y ocultas)"
+                title="Ver todas las actividades de esta sección"
               >
-                Todas ({activities.length})
+                Todas ({currentSourceActivities.length})
               </button>
               <button
                 type="button"
@@ -2300,7 +2370,7 @@ export default function AdminPanel({
                 title="Ver solo las actividades visibles para el público"
               >
                 <Eye size={13} style={{ marginRight: 4, verticalAlign: 'middle' }} />
-                Visibles ({visibleActivitiesCount})
+                Visibles ({currentVisibleCount})
               </button>
               <button
                 type="button"
@@ -2312,7 +2382,7 @@ export default function AdminPanel({
                 title="Ver solo las actividades ocultas para el público"
               >
                 <EyeOff size={13} style={{ marginRight: 4, verticalAlign: 'middle' }} />
-                Ocultas ({hiddenActivitiesCount})
+                Ocultas ({currentHiddenCount})
               </button>
             </div>
 
@@ -2338,7 +2408,11 @@ export default function AdminPanel({
           <div className={`admin-activities-cards-list ${isCompactView ? 'is-compact-mode' : ''}`}>
             {displayedActivities.length === 0 ? (
               <div className="empty-state-box">
-                <p>No se encontraron actividades con los filtros seleccionados.</p>
+                <p>
+                  {activityStatusTab === 'active'
+                    ? 'No se encontraron actividades vigentes con los filtros seleccionados.'
+                    : 'No se encontraron actividades en el historial con los filtros seleccionados.'}
+                </p>
               </div>
             ) : (
               displayedActivities.map(act => {
@@ -2428,6 +2502,16 @@ export default function AdminPanel({
                           >
                             {act.isHidden ? <EyeOff size={13} /> : <Eye size={13} />}
                             <span className="compact-lock-label">{act.isHidden ? 'Oculto' : 'Visible'}</span>
+                          </button>
+
+                          <button 
+                            type="button"
+                            className={`btn-table-completion-toggle btn-compact-lock ${isActivityExpired(act) ? 'is-completed' : 'is-pending'}`}
+                            onClick={() => onToggleActivityCompletion && onToggleActivityCompletion(act.id)}
+                            title={isActivityExpired(act) ? "Actividad en el historial. Haz clic para reactivarla como vigente." : "Marcar actividad como concluida y archivarla en el historial."}
+                          >
+                            <CheckCircle2 size={13} />
+                            <span className="compact-lock-label">{isActivityExpired(act) ? 'Reactivar' : 'Concluir'}</span>
                           </button>
 
                           <button 
@@ -2598,6 +2682,16 @@ export default function AdminPanel({
                           {act.isHidden ? <EyeOff size={13} /> : <Eye size={13} />}
                           <span>{act.isHidden ? 'Oculto' : 'Visible'}</span>
                         </button>
+
+                        <button 
+                          type="button"
+                          className={`btn-table-completion-toggle ${isActivityExpired(act) ? 'is-completed' : 'is-pending'}`}
+                          onClick={() => onToggleActivityCompletion && onToggleActivityCompletion(act.id)}
+                          title={isActivityExpired(act) ? "Actividad en el historial. Haz clic para reactivarla como vigente." : "Marcar actividad como concluida y archivarla en el historial."}
+                        >
+                          <CheckCircle2 size={13} />
+                          <span>{isActivityExpired(act) ? 'Reactivar' : 'Concluir'}</span>
+                        </button>
                       </div>
 
                       <div className="admin-card-btns-group">
@@ -2646,7 +2740,9 @@ export default function AdminPanel({
                 {displayedActivities.length === 0 ? (
                   <tr>
                     <td colSpan="9" style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
-                      No se encontraron actividades con los filtros seleccionados.
+                      {activityStatusTab === 'active'
+                        ? 'No se encontraron actividades vigentes con los filtros seleccionados.'
+                        : 'No se encontraron actividades en el historial con los filtros seleccionados.'}
                     </td>
                   </tr>
                 ) : (
@@ -2705,6 +2801,16 @@ export default function AdminPanel({
                           >
                             {act.isHidden ? <EyeOff size={13} /> : <Eye size={13} />}
                             <span>{act.isHidden ? 'Oculto' : 'Visible'}</span>
+                          </button>
+
+                          <button 
+                            type="button"
+                            className={`btn-table-completion-toggle ${isActivityExpired(act) ? 'is-completed' : 'is-pending'}`}
+                            onClick={() => onToggleActivityCompletion && onToggleActivityCompletion(act.id)}
+                            title={isActivityExpired(act) ? "Actividad en el historial. Haz clic para reactivarla como vigente." : "Marcar actividad como concluida y archivarla en el historial."}
+                          >
+                            <CheckCircle2 size={13} />
+                            <span>{isActivityExpired(act) ? 'Reactivar' : 'Concluir'}</span>
                           </button>
                         </div>
                       </td>

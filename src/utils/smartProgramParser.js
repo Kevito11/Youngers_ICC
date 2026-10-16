@@ -1,14 +1,23 @@
 /**
- * Parser inteligente asistido por Gemini AI mediante Netlify Functions (Proxy Backend Seguro).
+ * Parser inteligente asistido por Gemini AI.
  * 
- * Envía el texto informal y la lista de servidores a la función serverless en:
- * /.netlify/functions/parseProgram
- * 
- * La función backend utiliza el SDK oficial @google/generative-ai con GEMINI_API_KEY protegida
- * en el servidor de Netlify sin exponerla en el navegador del cliente.
+ * Arquitectura híbrida y resiliente:
+ * - En Desarrollo Local (localhost con `npm run dev`): Utiliza directamente la API de Gemini
+ *   con VITE_GEMINI_API_KEY desde .env para pruebas instantáneas sin requerir la CLI de Netlify.
+ * - En Producción (Netlify): Realiza peticiones POST a la función serverless segura
+ *   en /.netlify/functions/parseProgram utilizando GEMINI_API_KEY en el servidor.
  */
 
 const NETLIFY_FUNCTION_URL = '/.netlify/functions/parseProgram';
+const VITE_API_KEY = (import.meta.env.VITE_GEMINI_API_KEY || '').trim();
+
+// Modelos activos de Gemini en orden de preferencia
+const GEMINI_MODELS = [
+  'gemini-3.5-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-flash-latest',
+  'gemini-3.8-flash'
+];
 
 /**
  * Normaliza horas escritas como "8:00 – 8:05 p. m.", "7:00pm", "17:45" a "8:00 pm"
@@ -210,12 +219,161 @@ export function resolveRoleFromCatalog(candidateText, defaultRoleName, rolesCata
 }
 
 /**
- * Función principal: Envía la petición POST a la Netlify Function parseProgram
- * 
- * @param {string} text Texto informal pegado por el usuario
- * @param {Array} attendingServers Lista de servidores confirmados para la fecha (Paso 1)
- * @param {Array} allRegisteredServers Catálogo completo de servidores registrados en la app
- * @param {Array} rolesCatalog Catálogo de roles de servicio
+ * Prompt de extracción estricto para Gemini AI
+ */
+function buildExtractionPrompt(rawText, registeredServers = [], rolesCatalog = [], attendingServers = []) {
+  const simplifiedServers = registeredServers.map(s => ({
+    id: s.id,
+    name: s.name,
+    nickname: s.nickname || '',
+    role: s.role || ''
+  }));
+
+  const simplifiedRoles = (rolesCatalog || []).map(r => r.role);
+  const attendingNames = (attendingServers || []).map(s => s.name || s).join(', ');
+
+  return `Eres un extractor de datos JSON experto y preciso para logística de reuniones de jóvenes de iglesia (Youngers ICC).
+
+Tu objetivo es leer el texto informal (que puede contener horas irregulares como "8:00 – 8:05 p. m.", párrafos multilínea, y listas de responsabilidades), identificar cada bloque de actividad y realizar FUZZY MATCHING inteligente para encontrar qué persona del array 'registeredServers' es la responsable, sin importar si usaron '@' o no.
+
+=== ARRAY DE SERVIDORES REGISTRADOS ===
+${JSON.stringify(simplifiedServers, null, 2)}
+
+=== CATÁLOGO DE ROLES VÁLIDOS ===
+${JSON.stringify(simplifiedRoles, null, 2)}
+
+${attendingNames ? `=== SERVIDORES QUE ASISTIRÁN CONFIRMADOS ===\n${attendingNames}\n` : ''}
+
+=== TEXTO A PROCESAR ===
+"""
+${rawText}
+"""
+
+=== REGLAS ESTRICTAS DE EXTRACCIÓN ===
+1. Agrupa todo el texto que pertenece a cada bloque de tiempo.
+2. Identifica la hora ("time"), título de la actividad ("title"), y descripción técnica/reflexiva ("description").
+3. Para cada persona mencionada en el bloque (ej. "Michael Ovalles", "Jonatan Chez y Kevin Valdez", "Samuel Luciano"), haz coincidencia difusa (fuzzy matching) con 'registeredServers'.
+4. En el campo 'servers', coloca el 'id' del servidor registrado (o su 'name' si no tiene id o si es un invitado no registrado).
+5. En la sección final de *RESPONSABILIDADES* o Backstage (ej. "Proyección: Amelia Peralta", "Diapositiva: Noelia Peralta"), extrae las tareas en 'serverAssignments' mapeando el rol al catálogo más cercano (ej. "Multimedia y Proyección").
+6. Si detectas un predicador principal en una prédica o mensaje, colócalo en 'detectedPreacher'.
+7. Si hay personas que NO están en 'registeredServers' (ej. invitados), añádelas al array 'unregisteredServers'.
+
+DEBES DEVOLVER EXCLUSIVAMENTE UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA:
+{
+  "activities": [
+    {
+      "time": "8:00 - 8:05 p. m.",
+      "title": "Bienvenida y oración",
+      "servers": ["ID_o_Nombre_Coincidente"],
+      "responsible": "Nombre o Nombres legibles",
+      "description": "Texto descriptivo, instrucciones o preguntas que acompañan al bloque"
+    }
+  ],
+  "serverAssignments": [
+    {
+      "role": "Multimedia y Proyección",
+      "serverId": "ID_o_vacio",
+      "serverName": "Nombre",
+      "status": "Confirmado",
+      "duties": "Tarea asignada"
+    }
+  ],
+  "detectedPreacher": "Nombre del predicador o vacío",
+  "suggestedSchedules": {
+    "prepTime": "6:00 pm – 8:00 pm",
+    "activityTime": "8:00 pm – 9:30 pm",
+    "teardownTime": "9:30 pm – 10:00 pm"
+  },
+  "unregisteredServers": [
+    {
+      "name": "Nombre no encontrado",
+      "suggestedRole": "Rol sugerido",
+      "suggestedDuties": "Tarea",
+      "detectedIn": "Bloque donde se detectó"
+    }
+  ]
+}`;
+}
+
+/**
+ * Llamada directa a la API de Gemini (utilizada en desarrollo local o como respaldo)
+ */
+async function callDirectGemini(payload, apiKey) {
+  const prompt = buildExtractionPrompt(
+    payload.rawText, 
+    payload.registeredServers, 
+    payload.rolesCatalog, 
+    payload.attendingServers
+  );
+
+  let lastError = null;
+
+  for (const model of GEMINI_MODELS) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+      const body = {
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          response_mime_type: 'application/json',
+          temperature: 0.1
+        }
+      };
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson?.error?.message || `HTTP ${res.status}`);
+      }
+
+      const json = await res.json();
+      const rawText = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!rawText) throw new Error(`Modelo ${model} no devolvió texto.`);
+
+      const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+      return JSON.parse(cleaned);
+    } catch (err) {
+      lastError = err;
+      console.warn(`Llamada directa con ${model} falló:`, err.message);
+    }
+  }
+
+  throw lastError || new Error('No fue posible procesar el texto con Gemini API directamente.');
+}
+
+/**
+ * Llamada a la Netlify Function /.netlify/functions/parseProgram
+ */
+async function callNetlifyFunction(payload) {
+  const res = await fetch(NETLIFY_FUNCTION_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+
+  if (!res.ok) {
+    let errorMsg = `HTTP ${res.status}`;
+    try {
+      const errData = await res.json();
+      if (errData?.error) errorMsg = errData.error;
+    } catch (_) {}
+    throw new Error(errorMsg);
+  }
+
+  const json = await res.json();
+  if (!json.success || !json.data) {
+    throw new Error(json.error || 'La función de Netlify no devolvió datos válidos.');
+  }
+
+  return json.data;
+}
+
+/**
+ * Función principal: Envía la petición a Gemini
  */
 export async function parseSmartProgramText(text, attendingServers = [], allRegisteredServers = [], rolesCatalog = []) {
   if (!text || typeof text !== 'string' || !text.trim()) {
@@ -245,45 +403,49 @@ export async function parseSmartProgramText(text, attendingServers = [], allRegi
       }))
     };
 
-    const response = await fetch(NETLIFY_FUNCTION_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    });
+    let data = null;
 
-    if (!response.ok) {
-      // Manejo si la Netlify Function aún no está desplegada en local o devuelve error
-      let errorMessage = `HTTP ${response.status} ${response.statusText}`;
+    // 1. Si estamos en local (localhost) y existe VITE_GEMINI_API_KEY, usar directamente la API
+    const isLocalhost = typeof window !== 'undefined' && (
+      window.location.hostname === 'localhost' || 
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname.startsWith('192.168.') ||
+      window.location.hostname.startsWith('10.')
+    );
+
+    if (isLocalhost && VITE_API_KEY) {
       try {
-        const errorData = await response.json();
-        if (errorData?.error) errorMessage = errorData.error;
-      } catch (_) {
-        if (response.status === 404) {
-          errorMessage = 'No se encontró la Netlify Function en /.netlify/functions/parseProgram. ' +
-            'Asegúrate de ejecutar tu servidor con `npx netlify dev` en local o tener la función desplegada en Netlify.';
+        data = await callDirectGemini(payload, VITE_API_KEY);
+      } catch (err) {
+        console.warn('Llamada directa local falló, intentando Netlify Function...', err);
+      }
+    }
+
+    // 2. Si no se ha resuelto, llamar a la Netlify Function
+    if (!data) {
+      try {
+        data = await callNetlifyFunction(payload);
+      } catch (netlifyErr) {
+        // 3. Fallback de respaldo con la API directa si la función falló
+        if (VITE_API_KEY) {
+          data = await callDirectGemini(payload, VITE_API_KEY);
+        } else {
+          throw netlifyErr;
         }
       }
-      throw new Error(errorMessage);
     }
 
-    const json = await response.json();
-    if (!json.success || !json.data) {
-      throw new Error(json.error || 'La respuesta de la función no fue exitosa.');
+    if (!data) {
+      throw new Error('No se recibieron datos estructurados de Gemini.');
     }
 
-    const data = json.data;
-
-    // Procesar y normalizar 'activities' devueltas por Gemini
+    // Normalizar 'activities' devueltas por Gemini al formato esperado por el modal
     const activitiesRaw = Array.isArray(data.activities) 
       ? data.activities 
       : (Array.isArray(data.programSteps) ? data.programSteps : []);
 
     const programSteps = activitiesRaw.map(act => {
-      // Resolver nombres legibles a partir del array 'servers' o 'responsible'
       let responsibleText = act.responsible || '';
-      
       if (!responsibleText && Array.isArray(act.servers) && act.servers.length > 0) {
         responsibleText = act.servers.map(servIdOrName => {
           const found = allRegisteredServers.find(s => s.id === servIdOrName);
@@ -300,13 +462,12 @@ export async function parseSmartProgramText(text, attendingServers = [], allRegi
       };
     });
 
-    // Procesar serverAssignments
+    // Procesar asignaciones de servidores
     const serverAssignmentsRaw = Array.isArray(data.serverAssignments) ? data.serverAssignments : [];
     const serverAssignments = serverAssignmentsRaw.map(asg => {
       let serverId = asg.serverId || '';
       let serverName = asg.serverName || 'Servidor';
 
-      // Si no trajo id pero coincide con un servidor registrado
       if (!serverId && allRegisteredServers.length > 0) {
         const matched = findMatchingServer(serverName, allRegisteredServers);
         if (matched) {
@@ -324,7 +485,7 @@ export async function parseSmartProgramText(text, attendingServers = [], allRegi
       };
     });
 
-    // Asegurar que servidores confirmados del Paso 1 que no hayan quedado asignados aparezcan
+    // Asegurar que servidores confirmados del Paso 1 aparezcan en la lista
     if (Array.isArray(attendingServers) && attendingServers.length > 0) {
       attendingServers.forEach(srv => {
         const alreadyPresent = serverAssignments.some(asg => 
@@ -344,7 +505,6 @@ export async function parseSmartProgramText(text, attendingServers = [], allRegi
       });
     }
 
-    // Filtrar personas no registradas
     const unregisteredServers = Array.isArray(data.unregisteredServers) 
       ? data.unregisteredServers.filter(u => !findMatchingServer(u.name, allRegisteredServers, 90))
       : [];
@@ -364,7 +524,7 @@ export async function parseSmartProgramText(text, attendingServers = [], allRegi
       rawLineCount: text.split(/\r?\n/).filter(Boolean).length
     };
   } catch (error) {
-    console.error('Error al procesar programa mediante Netlify Function:', error);
+    console.error('Error al procesar programa:', error);
     return {
       success: false,
       error: error.message || 'Error inesperado al conectar con el servicio de análisis de Gemini.'

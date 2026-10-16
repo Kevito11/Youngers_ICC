@@ -48,17 +48,23 @@ export async function fetchFromGoogleSheets() {
     throw new Error(rawData.error || 'Error desconocido al obtener datos de Google Sheets');
   }
 
-  // Normalizar actividades para soportar visibilidad oculta (isHidden) en cualquier versión del Apps Script
+  // Normalizar actividades para soportar visibilidad oculta (isHidden) y conclusión manual (isCompleted) en cualquier versión del Apps Script
   if (Array.isArray(rawData.activities)) {
     rawData.activities = rawData.activities.map(act => {
-      const hasHiddenTag = typeof act.notes === 'string' && act.notes.includes('[[HIDDEN:true]]');
+      const notesStr = typeof act.notes === 'string' ? act.notes : '';
+      const hasHiddenTag = notesStr.includes('[[HIDDEN:true]]');
+      const hasCompletedTag = notesStr.includes('[[COMPLETED:true]]');
       const isHidden = Boolean(act.isHidden) || hasHiddenTag;
-      const cleanNotes = typeof act.notes === 'string'
-        ? act.notes.replace(/\s*\[\[HIDDEN:true\]\]/g, '').trim()
-        : (act.notes || '');
+      const isCompleted = Boolean(act.isCompleted) || hasCompletedTag;
+      const cleanNotes = notesStr
+        .replace(/\s*\[\[HIDDEN:true\]\]/g, '')
+        .replace(/\s*\[\[COMPLETED:true\]\]/g, '')
+        .trim();
       return {
         ...act,
         isHidden,
+        isCompleted,
+        status: isCompleted ? 'completed' : (act.status || 'active'),
         notes: cleanNotes
       };
     });
@@ -76,15 +82,28 @@ export async function syncToGoogleSheets(activities, servers, extra = {}) {
     throw new Error('No se ha configurado la URL del Script de Google Sheets.');
   }
 
-  // Asegurar que isHidden se guarde tanto en columna 24 como embebido discretamente en notes
-  // para que persista de manera infalible en cualquier versión desplegada de Google Apps Script
+  // Asegurar que isHidden e isCompleted persistan de manera infalible en cualquier versión
+  // desplegada de Google Apps Script mediante tags discretos en notes
   const processedActivities = (activities || []).map(act => {
     const isHidden = Boolean(act.isHidden);
-    const rawNotes = (act.notes || '').replace(/\s*\[\[HIDDEN:true\]\]/g, '').trim();
-    const finalNotes = isHidden ? (rawNotes ? `${rawNotes} [[HIDDEN:true]]` : '[[HIDDEN:true]]') : rawNotes;
+    const isCompleted = Boolean(act.isCompleted) || act.status === 'completed';
+    const rawNotes = (act.notes || '')
+      .replace(/\s*\[\[HIDDEN:true\]\]/g, '')
+      .replace(/\s*\[\[COMPLETED:true\]\]/g, '')
+      .trim();
+
+    const tags = [];
+    if (isHidden) tags.push('[[HIDDEN:true]]');
+    if (isCompleted) tags.push('[[COMPLETED:true]]');
+
+    const finalNotes = tags.length > 0
+      ? (rawNotes ? `${rawNotes} ${tags.join(' ')}` : tags.join(' '))
+      : rawNotes;
+
     return {
       ...act,
       isHidden,
+      isCompleted,
       notes: finalNotes
     };
   });

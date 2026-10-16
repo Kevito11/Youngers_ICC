@@ -2288,6 +2288,131 @@
   color: #0f172a;
 }
 
+/* Tabs de Estado de Actividades: Vigentes vs Historial */
+.admin-status-tabs-nav {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.85rem;
+  margin-bottom: 0.25rem;
+}
+
+.admin-status-tab-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+  padding: 0.95rem 1.25rem;
+  background: #f8fafc;
+  border: 2px solid #e2e8f0;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  text-align: left;
+}
+
+.admin-status-tab-btn:hover {
+  background: #ffffff;
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.admin-status-tab-btn.active.tab-active-mode {
+  background: #ffffff;
+  border-color: #2563eb;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.15);
+}
+
+.admin-status-tab-btn.active.tab-history-mode {
+  background: #ffffff;
+  border-color: #7c3aed;
+  box-shadow: 0 4px 14px rgba(124, 58, 237, 0.15);
+}
+
+.tab-btn-content {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+}
+
+.admin-status-tab-btn .tab-icon {
+  color: #64748b;
+  transition: color 0.2s;
+}
+
+.admin-status-tab-btn.active.tab-active-mode .tab-icon {
+  color: #2563eb;
+}
+
+.admin-status-tab-btn.active.tab-history-mode .tab-icon {
+  color: #7c3aed;
+}
+
+.tab-label {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.tab-sublabel {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #64748b;
+}
+
+.admin-status-tab-btn.active.tab-active-mode .tab-label {
+  color: #1d4ed8;
+}
+
+.admin-status-tab-btn.active.tab-history-mode .tab-label {
+  color: #6d28d9;
+}
+
+.tab-counter-badge {
+  margin-left: auto;
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 0.2rem 0.65rem;
+  border-radius: var(--radius-pill);
+}
+
+.tab-counter-badge.badge-active {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.tab-counter-badge.badge-history {
+  background: #ede9fe;
+  color: #5b21b6;
+}
+
+.status-source-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.65rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.status-source-pill.pill-active-theme {
+  background: #dbeafe;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+}
+
+.status-source-pill.pill-history-theme {
+  background: #ede9fe;
+  color: #5b21b6;
+  border: 1px solid #ddd6fe;
+}
+
+@media (max-width: 640px) {
+  .admin-status-tabs-nav {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Admin Table Header and Controls */
 .admin-table-header-row {
   display: flex;
@@ -6435,6 +6560,41 @@ html, body {
 
 .btn-table-lock-toggle.is-unlocked:hover {
   background: #bbf7d0;
+}
+
+.btn-table-completion-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-table-completion-toggle.is-completed {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+
+.btn-table-completion-toggle.is-completed:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.btn-table-completion-toggle.is-pending {
+  background: #ede9fe;
+  color: #6d28d9;
+  border: 1px solid #ddd6fe;
+}
+
+.btn-table-completion-toggle.is-pending:hover {
+  background: #ddd6fe;
+  color: #5b21b6;
 }
 
 .card-locked-tag {
