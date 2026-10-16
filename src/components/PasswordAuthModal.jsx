@@ -37,7 +37,7 @@ export default function PasswordAuthModal({ isOpen, onClose, onSuccess, title, d
     e.preventDefault();
     setError('');
 
-    const expectedPassword = (import.meta.env.VITE_ADMIN_PASSWORD || '1234').trim();
+    const expectedPassword = (import.meta.env.VITE_ADMIN_PASSWORD || '2561').trim();
 
     if (password === expectedPassword) {
       setIsSubmitting(true);
